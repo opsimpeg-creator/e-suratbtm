@@ -1,0 +1,377 @@
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  getDocs,
+  onSnapshot,
+  deleteDoc,
+  writeBatch,
+  disableNetwork,
+  enableNetwork,
+  setLogLevel
+} from 'firebase/firestore';
+import firebaseConfig from '../../firebase-applet-config.json';
+import {
+  SchoolSettings,
+  User,
+  LetterType,
+  FormField,
+  LetterTemplate,
+  SubmissionRequest,
+  AuditLog
+} from '../types';
+import {
+  INITIAL_SETTINGS,
+  INITIAL_USERS,
+  INITIAL_LETTER_TYPES,
+  INITIAL_FORM_FIELDS,
+  INITIAL_TEMPLATES,
+  INITIAL_SUBMISSIONS,
+  INITIAL_AUDIT_LOGS
+} from '../data/defaultData';
+
+// Silence Firestore internal log warnings (e.g. quota backoff spam)
+try {
+  setLogLevel('silent');
+} catch (e) {
+  // Ignore
+}
+
+// Initialize Firebase App safely
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
+// Initialize Firestore with custom databaseId if configured
+export const db = firebaseConfig.firestoreDatabaseId
+  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+  : getFirestore(app);
+
+// Firestore Collection References
+export const COLLECTIONS = {
+  SETTINGS: 'settings',
+  USERS: 'users',
+  LETTER_TYPES: 'letterTypes',
+  FORM_FIELDS: 'formFields',
+  TEMPLATES: 'templates',
+  SUBMISSIONS: 'submissions',
+  AUDIT_LOGS: 'auditLogs',
+};
+
+// Helper to recursively strip `undefined` properties for Firestore compatibility
+export function cleanForFirestore<T>(data: T): T {
+  if (data === undefined) return null as unknown as T;
+  return JSON.parse(JSON.stringify(data));
+}
+
+// Track Firestore quota/availability state in memory
+let isQuotaExceeded = false;
+let quotaExceededResetTimeout: any = null;
+
+function handleFirestoreError(actionName: string, err: any) {
+  const errMsg = err?.message || String(err);
+  if (errMsg.includes('quota') || errMsg.includes('resource-exhausted') || err?.code === 'resource-exhausted') {
+    isQuotaExceeded = true;
+    console.warn(`Firestore quota reached during ${actionName}. Running in local offline storage mode.`);
+    
+    // Disable network so Firestore stops backoff retry loop in the background
+    disableNetwork(db).catch(() => {});
+
+    if (!quotaExceededResetTimeout) {
+      // Re-enable attempts after 10 minutes
+      quotaExceededResetTimeout = setTimeout(() => {
+        isQuotaExceeded = false;
+        quotaExceededResetTimeout = null;
+        enableNetwork(db).catch(() => {});
+      }, 10 * 60 * 1000);
+    }
+  } else {
+    console.warn(`Firestore notice for ${actionName}:`, errMsg);
+  }
+}
+
+// Seed Firestore with default data if empty (guarded with local storage check to avoid repeated quota writes)
+export async function seedFirestoreIfEmpty(): Promise<void> {
+  const SEED_FLAG_KEY = 'tu_firestore_seeded_flag_v1';
+  try {
+    if (localStorage.getItem(SEED_FLAG_KEY) === 'true') {
+      return;
+    }
+    if (isQuotaExceeded) {
+      return;
+    }
+
+    // Check if settings exist
+    const settingsDocRef = doc(db, COLLECTIONS.SETTINGS, 'global');
+    const settingsSnap = await getDoc(settingsDocRef);
+
+    if (!settingsSnap.exists()) {
+      console.log('Seeding initial data to Firebase Firestore...');
+      const batch = writeBatch(db);
+
+      // Seed settings
+      batch.set(settingsDocRef, cleanForFirestore(INITIAL_SETTINGS));
+
+      // Seed users
+      INITIAL_USERS.forEach((u) => {
+        batch.set(doc(db, COLLECTIONS.USERS, u.id), cleanForFirestore(u));
+      });
+
+      // Seed letter types
+      INITIAL_LETTER_TYPES.forEach((lt) => {
+        batch.set(doc(db, COLLECTIONS.LETTER_TYPES, lt.id), cleanForFirestore(lt));
+      });
+
+      // Seed form fields
+      INITIAL_FORM_FIELDS.forEach((ff) => {
+        batch.set(doc(db, COLLECTIONS.FORM_FIELDS, ff.id), cleanForFirestore(ff));
+      });
+
+      // Seed templates
+      INITIAL_TEMPLATES.forEach((tmpl) => {
+        batch.set(doc(db, COLLECTIONS.TEMPLATES, tmpl.id), cleanForFirestore(tmpl));
+      });
+
+      // Seed submissions
+      INITIAL_SUBMISSIONS.forEach((sub) => {
+        batch.set(doc(db, COLLECTIONS.SUBMISSIONS, sub.id), cleanForFirestore(sub));
+      });
+
+      // Seed audit logs
+      INITIAL_AUDIT_LOGS.forEach((log) => {
+        batch.set(doc(db, COLLECTIONS.AUDIT_LOGS, log.id), cleanForFirestore(log));
+      });
+
+      await batch.commit();
+      console.log('Firestore seeding completed successfully.');
+    }
+    localStorage.setItem(SEED_FLAG_KEY, 'true');
+  } catch (err: any) {
+    handleFirestoreError('seedFirestoreIfEmpty', err);
+    // Mark as seeded in local storage so it doesn't loop on every page reload
+    localStorage.setItem(SEED_FLAG_KEY, 'true');
+  }
+}
+
+// Subscribe to real-time updates for all collections
+export function subscribeToFirebase(callback: (data: {
+  settings: SchoolSettings;
+  users: User[];
+  letterTypes: LetterType[];
+  formFields: FormField[];
+  templates: LetterTemplate[];
+  submissions: SubmissionRequest[];
+  auditLogs: AuditLog[];
+}) => void): () => void {
+  let settings = INITIAL_SETTINGS;
+  let users: User[] = INITIAL_USERS;
+  let letterTypes: LetterType[] = INITIAL_LETTER_TYPES;
+  let formFields: FormField[] = INITIAL_FORM_FIELDS;
+  let templates: LetterTemplate[] = INITIAL_TEMPLATES;
+  let submissions: SubmissionRequest[] = INITIAL_SUBMISSIONS;
+  let auditLogs: AuditLog[] = INITIAL_AUDIT_LOGS;
+
+  const handleSnapshotError = (collectionName: string) => (err: any) => {
+    console.warn(`Firestore snapshot notice for ${collectionName}:`, err?.message || 'operating in local/offline fallback mode');
+  };
+
+  const unsubSettings = onSnapshot(
+    doc(db, COLLECTIONS.SETTINGS, 'global'),
+    (snap) => {
+      if (snap.exists()) {
+        settings = snap.data() as SchoolSettings;
+        trigger();
+      }
+    },
+    handleSnapshotError('settings')
+  );
+
+  const unsubUsers = onSnapshot(
+    collection(db, COLLECTIONS.USERS),
+    (snap) => {
+      users = snap.docs.map((d) => d.data() as User);
+      trigger();
+    },
+    handleSnapshotError('users')
+  );
+
+  const unsubLetterTypes = onSnapshot(
+    collection(db, COLLECTIONS.LETTER_TYPES),
+    (snap) => {
+      letterTypes = snap.docs.map((d) => d.data() as LetterType);
+      trigger();
+    },
+    handleSnapshotError('letterTypes')
+  );
+
+  const unsubFormFields = onSnapshot(
+    collection(db, COLLECTIONS.FORM_FIELDS),
+    (snap) => {
+      formFields = snap.docs.map((d) => d.data() as FormField);
+      trigger();
+    },
+    handleSnapshotError('formFields')
+  );
+
+  const unsubTemplates = onSnapshot(
+    collection(db, COLLECTIONS.TEMPLATES),
+    (snap) => {
+      templates = snap.docs.map((d) => d.data() as LetterTemplate);
+      trigger();
+    },
+    handleSnapshotError('templates')
+  );
+
+  const unsubSubmissions = onSnapshot(
+    collection(db, COLLECTIONS.SUBMISSIONS),
+    (snap) => {
+      submissions = snap.docs.map((d) => d.data() as SubmissionRequest);
+      // Sort by createdAt desc
+      submissions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      trigger();
+    },
+    handleSnapshotError('submissions')
+  );
+
+  const unsubAuditLogs = onSnapshot(
+    collection(db, COLLECTIONS.AUDIT_LOGS),
+    (snap) => {
+      auditLogs = snap.docs.map((d) => d.data() as AuditLog);
+      auditLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      trigger();
+    },
+    handleSnapshotError('auditLogs')
+  );
+
+  function trigger() {
+    callback({
+      settings,
+      users,
+      letterTypes,
+      formFields,
+      templates,
+      submissions,
+      auditLogs,
+    });
+  }
+
+  // Return unsubscribe function
+  return () => {
+    unsubSettings();
+    unsubUsers();
+    unsubLetterTypes();
+    unsubFormFields();
+    unsubTemplates();
+    unsubSubmissions();
+    unsubAuditLogs();
+  };
+}
+
+// Helper methods to save to Firestore directly
+export async function saveSettingsToFirebase(settings: SchoolSettings): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await setDoc(doc(db, COLLECTIONS.SETTINGS, 'global'), cleanForFirestore(settings), { merge: true });
+  } catch (err) {
+    handleFirestoreError('saveSettingsToFirebase', err);
+  }
+}
+
+export async function saveUserToFirebase(user: User): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await setDoc(doc(db, COLLECTIONS.USERS, user.id), cleanForFirestore(user));
+  } catch (err) {
+    handleFirestoreError('saveUserToFirebase', err);
+  }
+}
+
+export async function deleteUserFromFirebase(userId: string): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await deleteDoc(doc(db, COLLECTIONS.USERS, userId));
+  } catch (err) {
+    handleFirestoreError('deleteUserFromFirebase', err);
+  }
+}
+
+export async function saveUsersListToFirebase(users: User[]): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    const batch = writeBatch(db);
+    users.forEach((u) => {
+      batch.set(doc(db, COLLECTIONS.USERS, u.id), cleanForFirestore(u));
+    });
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError('saveUsersListToFirebase', err);
+  }
+}
+
+export async function saveSubmissionToFirebase(submission: SubmissionRequest): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await setDoc(doc(db, COLLECTIONS.SUBMISSIONS, submission.id), cleanForFirestore(submission));
+  } catch (err) {
+    handleFirestoreError('saveSubmissionToFirebase', err);
+  }
+}
+
+export async function deleteSubmissionFromFirebase(id: string): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await deleteDoc(doc(db, COLLECTIONS.SUBMISSIONS, id));
+  } catch (err) {
+    handleFirestoreError('deleteSubmissionFromFirebase', err);
+  }
+}
+
+export async function saveLetterTypeToFirebase(lt: LetterType): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await setDoc(doc(db, COLLECTIONS.LETTER_TYPES, lt.id), cleanForFirestore(lt));
+  } catch (err) {
+    handleFirestoreError('saveLetterTypeToFirebase', err);
+  }
+}
+
+export async function deleteLetterTypeFromFirebase(id: string): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await deleteDoc(doc(db, COLLECTIONS.LETTER_TYPES, id));
+  } catch (err) {
+    handleFirestoreError('deleteLetterTypeFromFirebase', err);
+  }
+}
+
+export async function saveFormFieldsToFirebase(fields: FormField[]): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    const batch = writeBatch(db);
+    fields.forEach((f) => {
+      batch.set(doc(db, COLLECTIONS.FORM_FIELDS, f.id), cleanForFirestore(f));
+    });
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError('saveFormFieldsToFirebase', err);
+  }
+}
+
+export async function saveTemplateToFirebase(template: LetterTemplate): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await setDoc(doc(db, COLLECTIONS.TEMPLATES, template.id), cleanForFirestore(template));
+  } catch (err) {
+    handleFirestoreError('saveTemplateToFirebase', err);
+  }
+}
+
+export async function saveAuditLogToFirebase(log: AuditLog): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await setDoc(doc(db, COLLECTIONS.AUDIT_LOGS, log.id), cleanForFirestore(log));
+  } catch (err) {
+    handleFirestoreError('saveAuditLogToFirebase', err);
+  }
+}
