@@ -5,6 +5,7 @@ import { StorageService } from '../../services/storage';
 import { AppsScriptService } from '../../services/appsScript';
 import { PdfGenerator } from '../../services/pdfGenerator';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { PdfQrStamperModal } from './PdfQrStamperModal';
 import {
   Search,
   Filter,
@@ -36,7 +37,8 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  MessageCircle
+  MessageCircle,
+  QrCode
 } from 'lucide-react';
 
 interface RequestManagementProps {
@@ -91,6 +93,7 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
   const [uploadedOfficialFileUrl, setUploadedOfficialFileUrl] = useState<string>('');
   const [uploadedOfficialFileName, setUploadedOfficialFileName] = useState<string>('');
   const [isUploadingOfficial, setIsUploadingOfficial] = useState(false);
+  const [isQrStamperOpen, setIsQrStamperOpen] = useState(false);
 
   // Preview File Modal State
   const [previewModalFile, setPreviewModalFile] = useState<{ fileName: string; fileUrl: string; fileSize?: string } | null>(null);
@@ -889,11 +892,20 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
                         <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
+                            onClick={() => setIsQrStamperOpen(true)}
+                            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg flex items-center gap-1.5 shadow-xs transition"
+                            title="Buka Penempelan QR Code Interaktif (e-Meterai Style)"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Tempel / Atur Posisi QR</span>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleOpenPreview(uploadedOfficialFileUrl, uploadedOfficialFileName || `Surat_Resmi_${selectedRequest.requestNumber}.pdf`)}
                             className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs transition"
                           >
                             <EyeIcon className="w-3.5 h-3.5" />
-                            <span>Pratinjau Surat</span>
+                            <span>Pratinjau</span>
                           </button>
                           <button
                             type="button"
@@ -1124,6 +1136,24 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
         variant="danger"
         isLoading={isDeleting}
       />
+
+      {/* Interactive PDF QR Stamper Modal (e-Meterai Style) */}
+      {isQrStamperOpen && selectedRequest && uploadedOfficialFileUrl && (
+        <PdfQrStamperModal
+          isOpen={isQrStamperOpen}
+          onClose={() => setIsQrStamperOpen(false)}
+          fileDataUri={uploadedOfficialFileUrl}
+          fileName={uploadedOfficialFileName || `Surat_Resmi_${selectedRequest.requestNumber}.pdf`}
+          requestNumber={selectedRequest.requestNumber}
+          officialNumber={officialNumberInput || selectedRequest.officialLetterNumber}
+          schoolName={settings.schoolName}
+          verificationUrl={`${window.location.origin}?verify=${encodeURIComponent(selectedRequest.qrVerificationCode || selectedRequest.requestNumber)}`}
+          onStampComplete={(stampedUri, stampedName) => {
+            setUploadedOfficialFileUrl(stampedUri);
+            setUploadedOfficialFileName(stampedName);
+          }}
+        />
+      )}
     </div>
   );
 };

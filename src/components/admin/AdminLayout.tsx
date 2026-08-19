@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, SchoolSettings, SubmissionRequest } from '../../types';
+import { User, SchoolSettings, SubmissionRequest, ComplaintTicket } from '../../types';
 import {
   LayoutDashboard,
   FileText,
@@ -14,13 +14,15 @@ import {
   X,
   ExternalLink,
   ShieldCheck,
-  Bell
+  Bell,
+  MessageSquare
 } from 'lucide-react';
 
 interface AdminLayoutProps {
   currentUser: User;
   settings: SchoolSettings;
   submissions?: SubmissionRequest[];
+  complaints?: ComplaintTicket[];
   activeTab: string;
   setActiveTab: (tab: string) => void;
   onLogout: () => void;
@@ -31,6 +33,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   currentUser,
   settings,
   submissions = [],
+  complaints = [],
   activeTab,
   setActiveTab,
   onLogout,
@@ -45,17 +48,26 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   };
 
   const pendingCount = submissions.filter((s) => s.status === 'Menunggu').length;
+  const newComplaintsCount = complaints.filter((c) => c.status === 'Baru').length;
 
   const navItems = [
-    { id: 'admin-dashboard', label: 'Dashboard SaaS', icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: 'admin-dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
     {
       id: 'permohonan',
       label: 'Data Permohonan Surat',
       icon: <FileText className="w-4 h-4" />,
       badge: pendingCount > 0 ? pendingCount : null,
+      badgeColor: 'bg-rose-500 text-white',
     },
     { id: 'jenis-surat', label: 'Jenis Surat & Form Builder', icon: <Layers className="w-4 h-4" /> },
     { id: 'log-audit', label: 'Log Aktivitas & Audit', icon: <History className="w-4 h-4" /> },
+    {
+      id: 'pengaduan',
+      label: 'Pesan & Pengaduan',
+      icon: <MessageSquare className="w-4 h-4" />,
+      badge: newComplaintsCount > 0 ? newComplaintsCount : null,
+      badgeColor: 'bg-amber-400 text-slate-950',
+    },
     { id: 'pengguna', label: 'Pengguna & Hak Akses', icon: <Users className="w-4 h-4" />, roleReq: 'super_admin' },
     { id: 'sync-spreadsheet', label: 'Sync Google Spreadsheet', icon: <Database className="w-4 h-4" /> },
     { id: 'pengaturan', label: 'Setting Sekolah', icon: <Settings className="w-4 h-4" />, roleReq: 'super_admin' },
@@ -145,7 +157,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                   <span>{item.label}</span>
                 </div>
                 {item.badge ? (
-                  <span className="bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  <span className={`${item.badgeColor || 'bg-rose-500 text-white'} text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs`}>
                     {item.badge}
                   </span>
                 ) : null}

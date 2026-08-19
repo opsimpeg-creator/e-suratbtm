@@ -4,7 +4,8 @@ import {
   LetterType,
   SubmissionRequest,
   User,
-  ToastNotification
+  ToastNotification,
+  ComplaintTicket
 } from './types';
 import { StorageService } from './services/storage';
 import { AppsScriptService } from './services/appsScript';
@@ -27,6 +28,7 @@ import { SubmissionSuccessModal } from './components/public/SubmissionSuccessMod
 import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { RequestManagement } from './components/admin/RequestManagement';
+import { ComplaintManagement } from './components/admin/ComplaintManagement';
 import { LetterTypesManagement } from './components/admin/LetterTypesManagement';
 import { FormBuilder } from './components/admin/FormBuilder';
 import { SpreadsheetSyncPage } from './components/admin/SpreadsheetSyncPage';
@@ -40,6 +42,7 @@ export default function App() {
   const [settings, setSettings] = useState<SchoolSettings>(() => StorageService.getSettings());
   const [letterTypes, setLetterTypes] = useState<LetterType[]>(() => StorageService.getLetterTypes());
   const [submissions, setSubmissions] = useState<SubmissionRequest[]>(() => StorageService.getSubmissions());
+  const [complaints, setComplaints] = useState<ComplaintTicket[]>(() => StorageService.getComplaints());
   const [currentUser, setCurrentUser] = useState<User | null>(() => StorageService.getCurrentUser());
 
   // Navigation State
@@ -76,6 +79,7 @@ export default function App() {
     setSettings(StorageService.getSettings());
     setLetterTypes(StorageService.getLetterTypes());
     setSubmissions(StorageService.getSubmissions());
+    setComplaints(StorageService.getComplaints());
     setCurrentUser(StorageService.getCurrentUser());
   };
 
@@ -163,6 +167,7 @@ export default function App() {
   const isAdminTab = [
     'admin-dashboard',
     'permohonan',
+    'pengaduan',
     'jenis-surat',
     'builder-form',
     'pengguna',
@@ -274,6 +279,14 @@ export default function App() {
             selectedRequestFromDash={selectedRequestForDetail}
           />
         );
+      case 'pengaduan':
+        return (
+          <ComplaintManagement
+            complaints={complaints}
+            settings={settings}
+            onRefresh={refreshAllData}
+          />
+        );
       case 'jenis-surat':
         return (
           <LetterTypesManagement
@@ -349,6 +362,8 @@ export default function App() {
           currentUser={currentUser}
           onLogout={handleLogout}
           settings={settings}
+          submissions={submissions}
+          complaints={complaints}
         >
           {renderAdminContent()}
         </AdminLayout>

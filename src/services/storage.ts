@@ -6,7 +6,9 @@ import {
   LetterTemplate,
   User,
   AuditLog,
-  RequestStatus
+  RequestStatus,
+  ComplaintTicket,
+  ComplaintStatus
 } from '../types';
 import {
   INITIAL_SETTINGS,
@@ -15,7 +17,8 @@ import {
   INITIAL_FORM_FIELDS,
   INITIAL_TEMPLATES,
   INITIAL_SUBMISSIONS,
-  INITIAL_AUDIT_LOGS
+  INITIAL_AUDIT_LOGS,
+  INITIAL_COMPLAINTS
 } from '../data/defaultData';
 import {
   seedFirestoreIfEmpty,
@@ -30,7 +33,9 @@ import {
   deleteLetterTypeFromFirebase,
   saveFormFieldsToFirebase,
   saveTemplateToFirebase,
-  saveAuditLogToFirebase
+  saveAuditLogToFirebase,
+  saveComplaintToFirebase,
+  deleteComplaintFromFirebase
 } from './firebase';
 
 const KEYS = {
@@ -41,6 +46,7 @@ const KEYS = {
   TEMPLATES: 'tu_esurat_templates_v1',
   SUBMISSIONS: 'tu_esurat_submissions_v1',
   AUDIT_LOGS: 'tu_esurat_audit_logs_v1',
+  COMPLAINTS: 'tu_esurat_complaints_v1',
   CURRENT_USER: 'tu_esurat_current_user_v1',
 };
 
@@ -81,6 +87,7 @@ export const StorageService = {
       if (data.templates && data.templates.length > 0) setStored(KEYS.TEMPLATES, data.templates);
       if (data.submissions) setStored(KEYS.SUBMISSIONS, data.submissions);
       if (data.auditLogs) setStored(KEYS.AUDIT_LOGS, data.auditLogs);
+      if (data.complaints) setStored(KEYS.COMPLAINTS, data.complaints);
 
       if (onUpdate) onUpdate();
     });
@@ -542,6 +549,122 @@ export const StorageService = {
     if (logs.length > 100) logs.length = 100;
     setStored(KEYS.AUDIT_LOGS, logs);
     saveAuditLogToFirebase(newLog);
+  },
+
+  // Complaints / Helpdesk Tickets API
+  getComplaints(): ComplaintTicket[] {
+    return getStored<ComplaintTicket[]>(KEYS.COMPLAINTS, INITIAL_COMPLAINTS);
+  },
+
+  saveComplaints(complaints: ComplaintTicket[]): void {
+    setStored(KEYS.COMPLAINTS, complaints);
+  },
+
+  getComplaintById(id: string): ComplaintTicket | undefined {
+    const list = this.getComplaints();
+    return list.find((c) => c.id === id);
+  },
+
+  getComplaintByTicketNumber(ticketNumber: string): ComplaintTicket | undefined {
+    const clean = ticketNumber.trim().toUpperCase();
+    const list = this.getComplaints();
+    return list.find((c) => c.ticketNumber.toUpperCase() === clean);
+  },
+
+  generateNextTicketNumber(): string {
+    const list = this.getComplaints();
+    const now = new Date();
+    const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prefix = `TKT-${yearMonth}-`;
+    const matching = list.filter((c) => c.ticketNumber && c.ticketNumber.startsWith(prefix));
+    const nextIndex = matching.length + 1;
+    return `${prefix}${String(nextIndex).padStart(4, '0')}`;
+  },
+
+  createComplaint(data: {
+    senderName: string;
+    senderContact: string;
+    message: string;
+    category?: string;
+  }): ComplaintTicket {
+    const list = this.getComplaints();
+    const ticketNumber = this.generateNextTicketNumber();
+    const now = new Date().toISOString();
+
+    const newTicket: ComplaintTicket = {
+      id: 'tkt-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      ticketNumber,
+      senderName: data.senderName.trim(),
+      senderContact: data.senderContact.trim(),
+      message: data.message.trim(),
+      category: data.category || 'Kendala / Pertanyaan Umum',
+      status: 'Baru',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const updated = [newTicket, ...list];
+    this.saveComplaints(updated);
+    saveComplaintToFirebase(newTicket);
+
+    this.addAuditLog('System', 'CREATE_COMPLAINT', `Pengaduan baru diterima: ${ticketNumber} dari ${newTicket.senderName}`);
+    return newTicket;
+  },
+
+  updateComplaintResponse(
+    ticketId: string,
+    adminResponse: string,
+    status: ComplaintStatus,
+    actorName: string = 'Staf TU Admin'
+  ): boolean {
+    const list = this.getComplaints();
+    const idx = list.findIndex((c) => c.id === ticketId);
+    if (idx === -1) return false;
+
+    const now = new Date().toISOString();
+    const updatedTicket: ComplaintTicket = {
+      ...list[idx],
+      adminResponse: adminResponse.trim(),
+      status,
+      respondedAt: now,
+      respondedBy: actorName,
+      updatedAt: now,
+    };
+
+    list[idx] = updatedTicket;
+    this.saveComplaints(list);
+    saveComplaintToFirebase(updatedTicket);
+
+    this.addAuditLog(
+      actorName,
+      'RESPOND_COMPLAINT',
+      `Menanggapi pengaduan ${updatedTicket.ticketNumber} (Status: ${status})`
+    );
+    return true;
+  },
+
+  deleteComplaint(ticketId: string): boolean {
+    const list = this.getComplaints();
+    const target = list.find((c) => c.id === ticketId);
+    if (!target) return false;
+
+    const filtered = list.filter((c) => c.id !== ticketId);
+    this.saveComplaints(filtered);
+    deleteComplaintFromFirebase(ticketId);
+
+    this.addAuditLog(
+      'Staf TU Admin',
+      'DELETE_COMPLAINT',
+      `Menghapus data tiket pengaduan ${target.ticketNumber} (${target.senderName})`
+    );
+    return true;
+  },
+
+  clearAllComplaints(): void {
+    const list = this.getComplaints();
+    this.saveComplaints([]);
+    list.forEach((c) => deleteComplaintFromFirebase(c.id));
+    this.addAuditLog('super_admin', 'CLEAR_COMPLAINTS', 'Mengosongkan seluruh data pengaduan.');
   },
 
   // Export / Import / Reset Database

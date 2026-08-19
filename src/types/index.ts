@@ -159,6 +159,23 @@ export interface FAQItem {
   category: string;
 }
 
+export type ComplaintStatus = 'Baru' | 'Sedang Ditangani' | 'Selesai';
+
+export interface ComplaintTicket {
+  id: string;
+  ticketNumber: string; // e.g. TKT-202608-0001
+  senderName: string;
+  senderContact: string; // Email or WhatsApp/Phone
+  category?: string;
+  message: string;
+  status: ComplaintStatus;
+  adminResponse?: string;
+  respondedAt?: string;
+  respondedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ToastNotification {
   id: string;
   type: 'success' | 'error' | 'info' | 'warning';

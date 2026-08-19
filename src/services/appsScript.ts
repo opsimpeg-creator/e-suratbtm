@@ -382,6 +382,68 @@ function handleRoute(action, params) {
     return { success: false, message: "Permohonan tidak ditemukan" };
   }
 
+  if (action === 'submitComplaint' || action === 'saveComplaint') {
+    const sheet = ss.getSheetByName('Pengaduan');
+    if (!sheet) return { success: false, message: "Sheet Pengaduan tidak ditemukan" };
+    const data = sheet.getDataRange().getValues();
+    var existingRow = -1;
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(params.id) || String(data[i][1]) === String(params.ticketNumber)) {
+        existingRow = i + 1;
+        break;
+      }
+    }
+    if (existingRow > 0) {
+      sheet.getRange(existingRow, 1, 1, 11).setValues([[
+        params.id,
+        params.ticketNumber || '',
+        params.senderName || '',
+        params.senderContact || '',
+        params.category || 'Umum',
+        params.message || '',
+        params.status || 'Baru',
+        params.adminResponse || '',
+        params.createdAt || new Date().toISOString(),
+        params.respondedAt || '',
+        params.respondedBy || ''
+      ]]);
+    } else {
+      sheet.appendRow([
+        params.id,
+        params.ticketNumber || '',
+        params.senderName || '',
+        params.senderContact || '',
+        params.category || 'Umum',
+        params.message || '',
+        params.status || 'Baru',
+        params.adminResponse || '',
+        params.createdAt || new Date().toISOString(),
+        params.respondedAt || '',
+        params.respondedBy || ''
+      ]);
+    }
+    logActivity(ss, params.senderName || 'Pengadu', 'SUBMIT_COMPLAINT', 'Tiket: ' + params.ticketNumber);
+    return { success: true, message: "Pengaduan tersimpan", ticketNumber: params.ticketNumber };
+  }
+
+  if (action === 'getAllComplaints') {
+    return { success: true, complaints: getSheetDataAsJson(ss, 'Pengaduan') };
+  }
+
+  if (action === 'deleteComplaint') {
+    const sheet = ss.getSheetByName('Pengaduan');
+    if (!sheet) return { success: false, message: "Sheet Pengaduan tidak ditemukan" };
+    const data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(params.id) || String(data[i][1]) === String(params.ticketNumber)) {
+        sheet.deleteRow(i + 1);
+        logActivity(ss, params.actor || 'Admin', 'DELETE_COMPLAINT', 'Hapus pengaduan: ' + (params.ticketNumber || params.id));
+        return { success: true, message: "Pengaduan dihapus" };
+      }
+    }
+    return { success: false, message: "Pengaduan tidak ditemukan" };
+  }
+
   return { success: false, message: "Unknown action" };
 }
 
@@ -389,6 +451,7 @@ function bootstrapSheets(ss) {
   const requiredSheets = [
     { name: 'Pengguna', headers: ['ID', 'Username', 'Password', 'Nama', 'Role', 'Email', 'CreatedAt'] },
     { name: 'Permohonan', headers: ['ID', 'NoPermohonan', 'NamaPemohon', 'Email', 'HP', 'JenisSurat', 'Status', 'FormData', 'Tanggal', 'NoSuratResmi'] },
+    { name: 'Pengaduan', headers: ['ID', 'NoTiket', 'NamaPengirim', 'Kontak', 'Kategori', 'IsiPesan', 'Status', 'TanggapanAdmin', 'TanggalMasuk', 'TanggalDitanggapi', 'DitanggapiOleh'] },
     { name: 'JenisSurat', headers: ['ID', 'Kode', 'NamaSurat', 'Deskripsi', 'LamaProsesHari', 'StatusAktif', 'Urutan'] },
     { name: 'FieldSurat', headers: ['ID', 'JenisSuratID', 'Label', 'Name', 'Type', 'Required', 'Urutan'] },
     { name: 'Setting', headers: ['Key', 'Value'] },
@@ -822,26 +885,90 @@ function logActivity(ss, user, action, details) {
     }
   },
 
+  sendComplaintToAppsScript: async function (complaint: any): Promise<boolean> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    if (!url) return false;
+
+    try {
+      const payload = {
+        action: 'submitComplaint',
+        id: complaint.id,
+        ticketNumber: complaint.ticketNumber,
+        senderName: complaint.senderName,
+        senderContact: complaint.senderContact,
+        category: complaint.category || 'Umum',
+        message: complaint.message,
+        status: complaint.status || 'Baru',
+        adminResponse: complaint.adminResponse || '',
+        createdAt: complaint.createdAt,
+        respondedAt: complaint.respondedAt || '',
+        respondedBy: complaint.respondedBy || '',
+      };
+
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+        mode: 'no-cors',
+      });
+      return true;
+    } catch (e) {
+      console.warn('Apps Script Complaint Sync notice:', e);
+      return false;
+    }
+  },
+
+  deleteComplaintInAppsScript: async function (ticketId: string, ticketNumber?: string): Promise<boolean> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    if (!url) return false;
+
+    try {
+      const payload = {
+        action: 'deleteComplaint',
+        id: ticketId,
+        ticketNumber: ticketNumber || ticketId,
+      };
+
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+        mode: 'no-cors',
+      });
+      return true;
+    } catch (e) {
+      console.warn('Apps Script delete complaint notice:', e);
+      return false;
+    }
+  },
+
   syncAllToAppsScript: async function (): Promise<{ success: boolean; message: string; count: number }> {
     const settings = StorageService.getSettings();
     const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
     const submissions = StorageService.getSubmissions();
     const letterTypes = StorageService.getLetterTypes();
     const users = StorageService.getUsers();
+    const complaints = StorageService.getComplaints();
 
     if (!url) {
       return {
         success: true,
-        message: `[Simulasi Sync] ${submissions.length} permohonan, ${letterTypes.length} jenis surat, format nomor surat, dan ${users.length} pengguna tersimpan secara lokal. Masukkan URL Web App Google Apps Script untuk sinkronisasi langsung ke Google Sheet.`,
+        message: `[Simulasi Sync] ${submissions.length} permohonan, ${complaints.length} pengaduan, ${letterTypes.length} jenis surat, format nomor surat, dan ${users.length} pengguna tersimpan secara lokal. Masukkan URL Web App Google Apps Script untuk sinkronisasi langsung ke Google Sheet.`,
         count: submissions.length,
       };
     }
 
     try {
-      // Sync Jenis Surat, Pengguna, dan Format Nomor Surat
+      // Sync Jenis Surat, Pengguna, Format Nomor Surat, dan Pengaduan
       await this.syncAllLetterTypesToAppsScript();
       await this.syncAllUsersToAppsScript();
       await this.sendNomorSuratToAppsScript();
+
+      for (const comp of complaints) {
+        await this.sendComplaintToAppsScript(comp);
+      }
 
       let sentCount = 0;
       for (const sub of submissions) {
@@ -850,7 +977,7 @@ function logActivity(ss, user, action, details) {
       }
       return {
         success: true,
-        message: `Berhasil mengirim ${sentCount} data permohonan, ${letterTypes.length} Jenis Surat, Format Nomor Surat, dan ${users.length} Pengguna secara realtime ke Google Spreadsheet!`,
+        message: `Berhasil mengirim ${sentCount} data permohonan, ${complaints.length} pengaduan, ${letterTypes.length} Jenis Surat, Format Nomor Surat, dan ${users.length} Pengguna secara realtime ke Google Spreadsheet!`,
         count: sentCount,
       };
     } catch (err: any) {

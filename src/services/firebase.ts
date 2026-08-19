@@ -21,7 +21,8 @@ import {
   FormField,
   LetterTemplate,
   SubmissionRequest,
-  AuditLog
+  AuditLog,
+  ComplaintTicket
 } from '../types';
 import {
   INITIAL_SETTINGS,
@@ -30,7 +31,8 @@ import {
   INITIAL_FORM_FIELDS,
   INITIAL_TEMPLATES,
   INITIAL_SUBMISSIONS,
-  INITIAL_AUDIT_LOGS
+  INITIAL_AUDIT_LOGS,
+  INITIAL_COMPLAINTS
 } from '../data/defaultData';
 
 // Silence Firestore internal log warnings (e.g. quota backoff spam)
@@ -57,6 +59,7 @@ export const COLLECTIONS = {
   TEMPLATES: 'templates',
   SUBMISSIONS: 'submissions',
   AUDIT_LOGS: 'auditLogs',
+  COMPLAINTS: 'complaints',
 };
 
 // Helper to recursively strip `undefined` properties for Firestore compatibility
@@ -163,6 +166,7 @@ export function subscribeToFirebase(callback: (data: {
   templates: LetterTemplate[];
   submissions: SubmissionRequest[];
   auditLogs: AuditLog[];
+  complaints?: ComplaintTicket[];
 }) => void): () => void {
   let settings = INITIAL_SETTINGS;
   let users: User[] = INITIAL_USERS;
@@ -171,6 +175,7 @@ export function subscribeToFirebase(callback: (data: {
   let templates: LetterTemplate[] = INITIAL_TEMPLATES;
   let submissions: SubmissionRequest[] = INITIAL_SUBMISSIONS;
   let auditLogs: AuditLog[] = INITIAL_AUDIT_LOGS;
+  let complaints: ComplaintTicket[] = INITIAL_COMPLAINTS;
 
   const handleSnapshotError = (collectionName: string) => (err: any) => {
     console.warn(`Firestore snapshot notice for ${collectionName}:`, err?.message || 'operating in local/offline fallback mode');
@@ -244,6 +249,16 @@ export function subscribeToFirebase(callback: (data: {
     handleSnapshotError('auditLogs')
   );
 
+  const unsubComplaints = onSnapshot(
+    collection(db, COLLECTIONS.COMPLAINTS),
+    (snap) => {
+      complaints = snap.docs.map((d) => d.data() as ComplaintTicket);
+      complaints.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      trigger();
+    },
+    handleSnapshotError('complaints')
+  );
+
   function trigger() {
     callback({
       settings,
@@ -253,6 +268,7 @@ export function subscribeToFirebase(callback: (data: {
       templates,
       submissions,
       auditLogs,
+      complaints,
     });
   }
 
@@ -265,6 +281,7 @@ export function subscribeToFirebase(callback: (data: {
     unsubTemplates();
     unsubSubmissions();
     unsubAuditLogs();
+    unsubComplaints();
   };
 }
 
@@ -375,3 +392,22 @@ export async function saveAuditLogToFirebase(log: AuditLog): Promise<void> {
     handleFirestoreError('saveAuditLogToFirebase', err);
   }
 }
+
+export async function saveComplaintToFirebase(complaint: ComplaintTicket): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await setDoc(doc(db, COLLECTIONS.COMPLAINTS, complaint.id), cleanForFirestore(complaint));
+  } catch (err) {
+    handleFirestoreError('saveComplaintToFirebase', err);
+  }
+}
+
+export async function deleteComplaintFromFirebase(id: string): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await deleteDoc(doc(db, COLLECTIONS.COMPLAINTS, id));
+  } catch (err) {
+    handleFirestoreError('deleteComplaintFromFirebase', err);
+  }
+}
+

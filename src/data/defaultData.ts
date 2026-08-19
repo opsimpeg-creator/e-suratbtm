@@ -6,7 +6,8 @@ import {
   LetterTemplate,
   User,
   AuditLog,
-  FAQItem
+  FAQItem,
+  ComplaintTicket
 } from '../types';
 
 export const INITIAL_SETTINGS: SchoolSettings = {
@@ -650,4 +651,32 @@ export const INITIAL_FAQS: FAQItem[] = [
     question: 'Apakah ada biaya administrasi pembuatan surat di TU?',
     answer: 'Seluruh pelayanan administrasi persuratan bagi siswa dan alumni SMK Negeri 1 Batumandi bersifat GRATIS (Rp 0) tanpa dipungut biaya apapun.',
   },
+];
+
+export const INITIAL_COMPLAINTS: ComplaintTicket[] = [
+  {
+    id: 'tkt-001',
+    ticketNumber: 'TKT-202608-0001',
+    senderName: 'Rahmat Hidayat',
+    senderContact: '081234567890',
+    category: 'Kendala Permohonan Surat',
+    message: 'Saya sudah mengajukan Surat Keterangan Siswa Aktif kemarin, apakah nomor NISN saya sudah sesuai dengan data Dapodik sekolah?',
+    status: 'Selesai',
+    adminResponse: 'Halo Rahmat, data NISN Anda sudah diverifikasi dan sesuai di Dapodik. Surat Anda saat ini sudah selesai diterbitkan dan siap diunduh di menu Cek Status.',
+    respondedAt: '2026-08-19T06:00:00Z',
+    respondedBy: 'Budi Santoso (Staf TU)',
+    createdAt: '2026-08-18T10:15:00Z',
+    updatedAt: '2026-08-19T06:00:00Z',
+  },
+  {
+    id: 'tkt-002',
+    ticketNumber: 'TKT-202608-0002',
+    senderName: 'Siti Marlina (Orang Tua Siswa)',
+    senderContact: 'siti.marlina@gmail.com',
+    category: 'Pertanyaan Umum',
+    message: 'Mohon info apakah pengambilan berkas fisik legalisir surat ijazah bisa diwakilkan oleh orang tua pada hari Sabtu?',
+    status: 'Baru',
+    createdAt: '2026-08-19T06:30:00Z',
+    updatedAt: '2026-08-19T06:30:00Z',
+  }
 ];
