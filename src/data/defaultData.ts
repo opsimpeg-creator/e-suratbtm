@@ -22,7 +22,7 @@ export const INITIAL_SETTINGS: SchoolSettings = {
   headmasterNIP: '19750812 199903 1 004',
   tuHeadName: 'Siti Rahmah, S.Kom.',
   tuHeadNIP: '19820315 200801 2 009',
-  logoUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRSZUqTT1VAkz_I3A0ezSpG-RxkRWAGoYAnA0Zso5eaHA&s=10',
+  logoUrl: 'https://smkn1batumandi.sch.id/wp-content/uploads/2022/10/cropped-cropped-logo-web-removebg-preview.png',
   digitalStampUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=150&q=80',
   digitalSignatureUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80',
   letterNumberPattern: '420/{SEQ}/TU-SMK/{YEAR}',
