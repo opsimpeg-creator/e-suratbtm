@@ -51,7 +51,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const newComplaintsCount = complaints.filter((c) => c.status === 'Baru').length;
 
   const navItems = [
-    { id: 'admin-dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: 'admin-dashboard', label: 'Dashboard SaaS', icon: <LayoutDashboard className="w-4 h-4" /> },
     {
       id: 'permohonan',
       label: 'Data Permohonan Surat',
@@ -113,8 +113,19 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         <div className="space-y-6 p-5">
           {/* Logo Identity */}
           <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white text-base shadow-md">
-              TU
+            <div className="w-10 h-10 rounded-xl bg-white/10 p-1 flex items-center justify-center font-bold text-white text-base shadow-md shrink-0 overflow-hidden">
+              {settings.logoUrl ? (
+                <img
+                  src={settings.logoUrl}
+                  alt="Logo"
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                'TU'
+              )}
             </div>
             <div>
               <h2 className="font-bold text-white text-sm line-clamp-1">{settings.schoolName}</h2>

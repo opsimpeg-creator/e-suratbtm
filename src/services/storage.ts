@@ -126,8 +126,13 @@ export const StorageService = {
       };
       dirty = true;
     }
+    if (!settings.logoUrl || settings.logoUrl.includes('unsplash.com')) {
+      settings.logoUrl = INITIAL_SETTINGS.logoUrl;
+      dirty = true;
+    }
     if (dirty) {
       setStored(KEYS.SETTINGS, settings);
+      saveSettingsToFirebase(settings);
     }
     return settings;
   },

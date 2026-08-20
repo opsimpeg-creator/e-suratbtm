@@ -95,16 +95,11 @@ export const Header: React.FC<HeaderProps> = ({
               <FileText className="w-7 h-7 text-blue-800 fallback-icon hidden" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-bold text-slate-900 tracking-tight group-hover:text-blue-700 transition">
-                  {settings.schoolName}
-                </h1>
-                <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  E-SURAT TU
-                </span>
-              </div>
+              <h1 className="text-lg font-bold text-slate-900 tracking-tight group-hover:text-blue-700 transition">
+                LAPIS SMAKTUDI
+              </h1>
               <p className="text-xs text-slate-500 font-medium line-clamp-1">
-                Layanan Persuratan Online Siswa & Alumni Integrated System
+                Layanan Pengajuan Surat Siswa & Alumni Online
               </p>
             </div>
           </div>
