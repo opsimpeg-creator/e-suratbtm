@@ -29,6 +29,7 @@ import {
   deleteUserFromFirebase,
   saveUsersListToFirebase,
   saveSubmissionToFirebase,
+  replaceSubmissionsInFirebase,
   deleteSubmissionFromFirebase,
   saveLetterTypeToFirebase,
   deleteLetterTypeFromFirebase,
@@ -36,6 +37,7 @@ import {
   saveTemplateToFirebase,
   saveAuditLogToFirebase,
   saveComplaintToFirebase,
+  replaceComplaintsInFirebase,
   deleteComplaintFromFirebase
 } from './firebase';
 
@@ -420,7 +422,7 @@ export const StorageService = {
   },
   saveSubmissions(submissions: SubmissionRequest[]): void {
     setStored(KEYS.SUBMISSIONS, submissions);
-    submissions.forEach((s) => saveSubmissionToFirebase(s));
+    replaceSubmissionsInFirebase(submissions);
   },
   deleteSubmission(id: string): boolean {
     const list = this.getSubmissions();
@@ -591,11 +593,18 @@ export const StorageService = {
 
   // Complaints / Helpdesk Tickets API
   getComplaints(): ComplaintTicket[] {
-    return getStored<ComplaintTicket[]>(KEYS.COMPLAINTS, INITIAL_COMPLAINTS);
+    const rawList = getStored<ComplaintTicket[]>(KEYS.COMPLAINTS, INITIAL_COMPLAINTS);
+    const dummyIds = new Set(['tkt-001', 'tkt-002']);
+    const filtered = rawList.filter((c) => !dummyIds.has(c.id));
+    if (filtered.length !== rawList.length) {
+      setStored(KEYS.COMPLAINTS, filtered);
+    }
+    return filtered;
   },
 
   saveComplaints(complaints: ComplaintTicket[]): void {
     setStored(KEYS.COMPLAINTS, complaints);
+    replaceComplaintsInFirebase(complaints);
   },
 
   getComplaintById(id: string): ComplaintTicket | undefined {

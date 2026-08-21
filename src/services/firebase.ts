@@ -228,12 +228,25 @@ export function subscribeToFirebase(callback: (data: {
     handleSnapshotError('templates')
   );
 
+  const dummyIds = new Set(['sub-001', 'sub-002', 'sub-003', 'sub-004', 'demo-sample-001', 'demo-sample-002', 'demo-sample-003', 'demo-sample-004']);
+
   const unsubSubmissions = onSnapshot(
     collection(db, COLLECTIONS.SUBMISSIONS),
     (snap) => {
-      submissions = snap.docs.map((d) => d.data() as SubmissionRequest);
+      // Filter out any legacy dummy submissions from cloud snapshot
+      const rawList = snap.docs.map((d) => d.data() as SubmissionRequest);
+      const realOnly = rawList.filter((s) => !dummyIds.has(s.id));
+
+      // Auto-cleanup dummy documents from Firestore if they exist
+      snap.docs.forEach((docSnapshot) => {
+        if (dummyIds.has(docSnapshot.id) || dummyIds.has(docSnapshot.data()?.id)) {
+          deleteDoc(doc(db, COLLECTIONS.SUBMISSIONS, docSnapshot.id)).catch(() => {});
+        }
+      });
+
+      submissions = realOnly;
       // Sort by createdAt desc
-      submissions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      submissions.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       trigger();
     },
     handleSnapshotError('submissions')
@@ -249,11 +262,23 @@ export function subscribeToFirebase(callback: (data: {
     handleSnapshotError('auditLogs')
   );
 
+  const dummyComplaintIds = new Set(['tkt-001', 'tkt-002']);
+
   const unsubComplaints = onSnapshot(
     collection(db, COLLECTIONS.COMPLAINTS),
     (snap) => {
-      complaints = snap.docs.map((d) => d.data() as ComplaintTicket);
-      complaints.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const rawList = snap.docs.map((d) => d.data() as ComplaintTicket);
+      const realOnly = rawList.filter((c) => !dummyComplaintIds.has(c.id));
+
+      // Auto-cleanup dummy documents from Firestore if they exist
+      snap.docs.forEach((docSnapshot) => {
+        if (dummyComplaintIds.has(docSnapshot.id) || dummyComplaintIds.has(docSnapshot.data()?.id)) {
+          deleteDoc(doc(db, COLLECTIONS.COMPLAINTS, docSnapshot.id)).catch(() => {});
+        }
+      });
+
+      complaints = realOnly;
+      complaints.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       trigger();
     },
     handleSnapshotError('complaints')
@@ -335,6 +360,31 @@ export async function saveSubmissionToFirebase(submission: SubmissionRequest): P
   }
 }
 
+export async function replaceSubmissionsInFirebase(submissions: SubmissionRequest[]): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.SUBMISSIONS));
+    const newIds = new Set(submissions.map((s) => s.id));
+    const batch = writeBatch(db);
+
+    // Delete any documents not in the new spreadsheet dataset
+    snap.docs.forEach((docSnapshot) => {
+      if (!newIds.has(docSnapshot.id)) {
+        batch.delete(docSnapshot.ref);
+      }
+    });
+
+    // Upsert all current spreadsheet submissions
+    submissions.forEach((s) => {
+      batch.set(doc(db, COLLECTIONS.SUBMISSIONS, s.id), cleanForFirestore(s));
+    });
+
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError('replaceSubmissionsInFirebase', err);
+  }
+}
+
 export async function deleteSubmissionFromFirebase(id: string): Promise<void> {
   if (isQuotaExceeded) return;
   try {
@@ -399,6 +449,31 @@ export async function saveComplaintToFirebase(complaint: ComplaintTicket): Promi
     await setDoc(doc(db, COLLECTIONS.COMPLAINTS, complaint.id), cleanForFirestore(complaint));
   } catch (err) {
     handleFirestoreError('saveComplaintToFirebase', err);
+  }
+}
+
+export async function replaceComplaintsInFirebase(complaints: ComplaintTicket[]): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.COMPLAINTS));
+    const newIds = new Set(complaints.map((c) => c.id));
+    const batch = writeBatch(db);
+
+    // Delete any documents not in the new spreadsheet dataset
+    snap.docs.forEach((docSnapshot) => {
+      if (!newIds.has(docSnapshot.id)) {
+        batch.delete(docSnapshot.ref);
+      }
+    });
+
+    // Upsert all current spreadsheet complaints
+    complaints.forEach((c) => {
+      batch.set(doc(db, COLLECTIONS.COMPLAINTS, c.id), cleanForFirestore(c));
+    });
+
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError('replaceComplaintsInFirebase', err);
   }
 }
 

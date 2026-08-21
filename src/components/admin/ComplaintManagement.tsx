@@ -202,7 +202,7 @@ export const ComplaintManagement: React.FC<ComplaintManagementProps> = ({
   const handleSyncSpreadsheet = async () => {
     setIsSyncing(true);
     try {
-      const res = await AppsScriptService.syncAllToAppsScript();
+      const res = await AppsScriptService.fetchDataFromAppsScript(false);
       alert(res.message);
       onRefresh();
     } catch (e: any) {

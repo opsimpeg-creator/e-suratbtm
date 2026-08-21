@@ -47,6 +47,7 @@ function handleRoute(action, params) {
     return {
       success: true,
       permohonan: getSheetDataAsJson(ss, 'Permohonan'),
+      pengaduan: getSheetDataAsJson(ss, 'Pengaduan'),
       jenisSurat: getSheetDataAsJson(ss, 'JenisSurat'),
       fieldSurat: getSheetDataAsJson(ss, 'FieldSurat'),
       setting: getSheetDataAsJson(ss, 'Setting'),
@@ -825,18 +826,96 @@ function logActivity(ss, user, action, details) {
         });
       }
 
-      // If spreadsheet has data, set parsedSubmissions as the clean authoritative dataset
-      // Sort by createdAt descending
-      parsedSubmissions.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      // Parse Complaints / Pengaduan
+      let rawComplaintsList: any[] = data.pengaduan || data.complaints || [];
 
+      // If pengaduanList is empty in getAllData, query ?action=getAllComplaints as fallback
+      if (!rawComplaintsList || rawComplaintsList.length === 0) {
+        try {
+          const compResp = await fetch(`${url}?action=getAllComplaints`);
+          if (compResp.ok) {
+            const compJson = await compResp.json();
+            if (compJson.success && Array.isArray(compJson.complaints)) {
+              rawComplaintsList = compJson.complaints;
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // Fallback directly to Google Spreadsheet GViz API if still empty
+      if ((!rawComplaintsList || rawComplaintsList.length === 0) && settings.spreadsheetId) {
+        try {
+          const gvizUrl = `https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}/gviz/tq?tqx=out:json&sheet=Pengaduan`;
+          const gvizRes = await fetch(gvizUrl);
+          if (gvizRes.ok) {
+            const text = await gvizRes.text();
+            const jsonText = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+            const gvizData = JSON.parse(jsonText);
+            if (gvizData?.table?.rows) {
+              rawComplaintsList = gvizData.table.rows.map((r: any) => {
+                const c = r.c || [];
+                return {
+                  ID: c[0]?.v,
+                  NoTiket: c[1]?.v,
+                  NamaPengirim: c[2]?.v,
+                  Kontak: c[3]?.v,
+                  Kategori: c[4]?.v,
+                  IsiPesan: c[5]?.v,
+                  Status: c[6]?.v,
+                  TanggapanAdmin: c[7]?.v,
+                  TanggalMasuk: c[8]?.v,
+                  TanggalDitanggapi: c[9]?.v,
+                  DitanggapiOleh: c[10]?.v,
+                };
+              });
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      const parsedComplaints: any[] = [];
+      for (const item of rawComplaintsList) {
+        const ticketNum = String(item.NoTiket || item.ticketNumber || '');
+        const sender = String(item.NamaPengirim || item.senderName || '');
+        const msg = String(item.IsiPesan || item.message || '');
+        if (!ticketNum && !sender && !msg) continue;
+
+        parsedComplaints.push({
+          id: String(item.ID || item.id || ('tkt-' + Date.now())),
+          ticketNumber: ticketNum || 'TKT-000000-0000',
+          senderName: sender || 'Pengirim',
+          senderContact: String(item.Kontak || item.senderContact || ''),
+          category: String(item.Kategori || item.category || 'Umum'),
+          message: msg,
+          status: (item.Status || item.status || 'Baru'),
+          adminResponse: item.TanggapanAdmin || item.adminResponse || undefined,
+          createdAt: String(item.TanggalMasuk || item.createdAt || new Date().toISOString()),
+          respondedAt: item.TanggalDitanggapi || item.respondedAt || undefined,
+          respondedBy: item.DitanggapiOleh || item.respondedBy || undefined,
+          updatedAt: String(item.TanggalDitanggapi || item.updatedAt || item.TanggalMasuk || new Date().toISOString()),
+        });
+      }
+
+      // Save Permohonan
+      parsedSubmissions.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       if (parsedSubmissions.length > 0) {
         StorageService.saveSubmissions(parsedSubmissions);
       }
 
+      // Save Pengaduan
+      parsedComplaints.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      if (parsedComplaints.length > 0) {
+        StorageService.saveComplaints(parsedComplaints);
+      }
+
       return {
         success: true,
-        message: `Berhasil sinkronisasi ${parsedSubmissions.length} data permohonan langsung dari Google Spreadsheet!`,
-        count: parsedSubmissions.length,
+        message: `Berhasil sinkronisasi ${parsedSubmissions.length} permohonan & ${parsedComplaints.length} pesan pengaduan langsung dari Google Spreadsheet!`,
+        count: parsedSubmissions.length + parsedComplaints.length,
       };
     } catch (err: any) {
       if (!isBackground) {
