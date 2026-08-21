@@ -98,21 +98,28 @@ export default function App() {
 
     // Background polling from Google Apps Script if webAppUrl is configured
     let failedAttempts = 0;
-    const checkSpreadsheetInterval = setInterval(() => {
+    const triggerAppsScriptSync = () => {
       const currentSettings = StorageService.getSettings();
       if (currentSettings.webAppUrl && failedAttempts < 3) {
-        AppsScriptService.fetchDataFromAppsScript(true).then((res) => {
-          if (res.success) {
-            failedAttempts = 0;
-            refreshAllData();
-          } else {
+        AppsScriptService.fetchDataFromAppsScript(true)
+          .then((res) => {
+            if (res.success) {
+              failedAttempts = 0;
+              refreshAllData();
+            } else {
+              failedAttempts++;
+            }
+          })
+          .catch(() => {
             failedAttempts++;
-          }
-        }).catch(() => {
-          failedAttempts++;
-        });
+          });
       }
-    }, 30000);
+    };
+
+    // Immediate initial sync on mount
+    triggerAppsScriptSync();
+
+    const checkSpreadsheetInterval = setInterval(triggerAppsScriptSync, 30000);
 
     return () => {
       unsub();

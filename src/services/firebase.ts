@@ -157,6 +157,43 @@ export async function seedFirestoreIfEmpty(): Promise<void> {
   }
 }
 
+export function isDummySubmission(s: any): boolean {
+  if (!s || typeof s !== 'object') return true;
+  const dummyIds = new Set([
+    'sub-001',
+    'sub-002',
+    'sub-003',
+    'sub-004',
+    'demo-sample-001',
+    'demo-sample-002',
+    'demo-sample-003',
+    'demo-sample-004',
+  ]);
+  if (s.id && dummyIds.has(String(s.id))) return true;
+
+  const name = String(s.applicantName || s.formData?.nama || '').toLowerCase().trim();
+  const dummyNames = [
+    'sofia amira',
+    'muhammad rafi',
+    'muhammad rizky pratama',
+    'anisa nur aini',
+    'dewi lestari',
+    'bagas aditya',
+  ];
+  if (dummyNames.some((dn) => name.includes(dn))) return true;
+
+  return false;
+}
+
+export function isDummyComplaint(c: any): boolean {
+  if (!c || typeof c !== 'object') return true;
+  const dummyIds = new Set(['tkt-001', 'tkt-002']);
+  if (c.id && dummyIds.has(String(c.id))) return true;
+  const sender = String(c.senderName || '').toLowerCase().trim();
+  if (sender.includes('budi santoso') && c.ticketNumber === 'TKT-202608-0001') return true;
+  return false;
+}
+
 // Subscribe to real-time updates for all collections
 export function subscribeToFirebase(callback: (data: {
   settings: SchoolSettings;
@@ -228,18 +265,17 @@ export function subscribeToFirebase(callback: (data: {
     handleSnapshotError('templates')
   );
 
-  const dummyIds = new Set(['sub-001', 'sub-002', 'sub-003', 'sub-004', 'demo-sample-001', 'demo-sample-002', 'demo-sample-003', 'demo-sample-004']);
-
   const unsubSubmissions = onSnapshot(
     collection(db, COLLECTIONS.SUBMISSIONS),
     (snap) => {
       // Filter out any legacy dummy submissions from cloud snapshot
       const rawList = snap.docs.map((d) => d.data() as SubmissionRequest);
-      const realOnly = rawList.filter((s) => !dummyIds.has(s.id));
+      const realOnly = rawList.filter((s) => !isDummySubmission(s));
 
       // Auto-cleanup dummy documents from Firestore if they exist
       snap.docs.forEach((docSnapshot) => {
-        if (dummyIds.has(docSnapshot.id) || dummyIds.has(docSnapshot.data()?.id)) {
+        const data = docSnapshot.data();
+        if (isDummySubmission({ id: docSnapshot.id, ...data })) {
           deleteDoc(doc(db, COLLECTIONS.SUBMISSIONS, docSnapshot.id)).catch(() => {});
         }
       });
@@ -262,17 +298,16 @@ export function subscribeToFirebase(callback: (data: {
     handleSnapshotError('auditLogs')
   );
 
-  const dummyComplaintIds = new Set(['tkt-001', 'tkt-002']);
-
   const unsubComplaints = onSnapshot(
     collection(db, COLLECTIONS.COMPLAINTS),
     (snap) => {
       const rawList = snap.docs.map((d) => d.data() as ComplaintTicket);
-      const realOnly = rawList.filter((c) => !dummyComplaintIds.has(c.id));
+      const realOnly = rawList.filter((c) => !isDummyComplaint(c));
 
       // Auto-cleanup dummy documents from Firestore if they exist
       snap.docs.forEach((docSnapshot) => {
-        if (dummyComplaintIds.has(docSnapshot.id) || dummyComplaintIds.has(docSnapshot.data()?.id)) {
+        const data = docSnapshot.data();
+        if (isDummyComplaint({ id: docSnapshot.id, ...data })) {
           deleteDoc(doc(db, COLLECTIONS.COMPLAINTS, docSnapshot.id)).catch(() => {});
         }
       });

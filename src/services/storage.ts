@@ -38,7 +38,9 @@ import {
   saveAuditLogToFirebase,
   saveComplaintToFirebase,
   replaceComplaintsInFirebase,
-  deleteComplaintFromFirebase
+  deleteComplaintFromFirebase,
+  isDummySubmission,
+  isDummyComplaint
 } from './firebase';
 
 const KEYS = {
@@ -52,6 +54,35 @@ const KEYS = {
   COMPLAINTS: 'tu_esurat_complaints_v1',
   CURRENT_USER: 'tu_esurat_current_user_v1',
 };
+
+// Immediate Synchronous Purge: clean any residual dummy entries from browser storage before components load
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    const rawSub = localStorage.getItem(KEYS.SUBMISSIONS);
+    if (rawSub) {
+      const parsed = JSON.parse(rawSub);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter((s: any) => !isDummySubmission(s));
+        if (cleaned.length !== parsed.length) {
+          localStorage.setItem(KEYS.SUBMISSIONS, JSON.stringify(cleaned));
+        }
+      }
+    }
+
+    const rawComp = localStorage.getItem(KEYS.COMPLAINTS);
+    if (rawComp) {
+      const parsed = JSON.parse(rawComp);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter((c: any) => !isDummyComplaint(c));
+        if (cleaned.length !== parsed.length) {
+          localStorage.setItem(KEYS.COMPLAINTS, JSON.stringify(cleaned));
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+}
 
 // Helper to safely load from LocalStorage
 function getStored<T>(key: string, fallback: T): T {
@@ -377,9 +408,7 @@ export const StorageService = {
   // Submissions (Only holds real submissions in admin/database)
   getSubmissions(): SubmissionRequest[] {
     const rawList = getStored<SubmissionRequest[]>(KEYS.SUBMISSIONS, INITIAL_SUBMISSIONS);
-    // Filter out legacy dummy submissions so the admin table only displays real data
-    const dummyIds = new Set(['sub-001', 'sub-002', 'sub-003', 'sub-004', 'demo-sample-001', 'demo-sample-002', 'demo-sample-003', 'demo-sample-004']);
-    const realList = rawList.filter((s) => !dummyIds.has(s.id));
+    const realList = rawList.filter((s) => !isDummySubmission(s));
     if (realList.length !== rawList.length) {
       setStored(KEYS.SUBMISSIONS, realList);
     }
@@ -594,8 +623,7 @@ export const StorageService = {
   // Complaints / Helpdesk Tickets API
   getComplaints(): ComplaintTicket[] {
     const rawList = getStored<ComplaintTicket[]>(KEYS.COMPLAINTS, INITIAL_COMPLAINTS);
-    const dummyIds = new Set(['tkt-001', 'tkt-002']);
-    const filtered = rawList.filter((c) => !dummyIds.has(c.id));
+    const filtered = rawList.filter((c) => !isDummyComplaint(c));
     if (filtered.length !== rawList.length) {
       setStored(KEYS.COMPLAINTS, filtered);
     }
