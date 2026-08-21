@@ -825,53 +825,18 @@ function logActivity(ss, user, action, details) {
         });
       }
 
-      // Merge parsed submissions from Google Apps Script with existing local/Firebase submissions
-      const currentSubmissions = StorageService.getSubmissions();
-      const map = new Map<string, any>();
-
-      // Populate map with current local/Firebase submissions
-      for (const s of currentSubmissions) {
-        if (s.id) map.set(s.id, s);
-        if (s.requestNumber) map.set(s.requestNumber.toLowerCase().trim(), s);
-      }
-
-      // Upsert/merge parsed submissions from Google Spreadsheet
-      for (const parsed of parsedSubmissions) {
-        const reqNumKey = parsed.requestNumber ? parsed.requestNumber.toLowerCase().trim() : '';
-        const existing = map.get(parsed.id) || (reqNumKey ? map.get(reqNumKey) : null);
-
-        if (existing) {
-          const merged = {
-            ...existing,
-            ...parsed,
-            formData: { ...existing.formData, ...parsed.formData },
-            status: parsed.status || existing.status,
-            officialLetterNumber: parsed.officialLetterNumber || existing.officialLetterNumber,
-            uploadedFiles: existing.uploadedFiles || parsed.uploadedFiles,
-            timeline: existing.timeline && existing.timeline.length > (parsed.timeline?.length || 0)
-              ? existing.timeline
-              : parsed.timeline,
-          };
-          map.set(existing.id, merged);
-          if (reqNumKey) map.set(reqNumKey, merged);
-        } else {
-          map.set(parsed.id, parsed);
-          if (reqNumKey) map.set(reqNumKey, parsed);
-        }
-      }
-
-      // Extract unique list of merged submissions
-      const mergedList = Array.from(new Set(map.values()));
-
+      // If spreadsheet has data, set parsedSubmissions as the clean authoritative dataset
       // Sort by createdAt descending
-      mergedList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      parsedSubmissions.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
-      StorageService.saveSubmissions(mergedList);
+      if (parsedSubmissions.length > 0) {
+        StorageService.saveSubmissions(parsedSubmissions);
+      }
 
       return {
         success: true,
-        message: `Berhasil sinkronisasi ${mergedList.length} data permohonan dari Google Spreadsheet & Firebase!`,
-        count: mergedList.length,
+        message: `Berhasil sinkronisasi ${parsedSubmissions.length} data permohonan langsung dari Google Spreadsheet!`,
+        count: parsedSubmissions.length,
       };
     } catch (err: any) {
       if (!isBackground) {

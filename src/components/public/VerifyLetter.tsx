@@ -29,14 +29,7 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings }) => {
     if (!c) return;
 
     setSearched(true);
-    const submissions = StorageService.getSubmissions();
-    const found = submissions.find(
-      (s) =>
-        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase() === c.toLowerCase()) ||
-        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase() === c.toLowerCase()) ||
-        (s.requestNumber && s.requestNumber.toLowerCase() === c.toLowerCase())
-    );
-
+    const found = StorageService.getSubmissionByQr(c) || StorageService.getSubmissionByNumber(c);
     setVerifiedRequest(found || null);
   };
 
@@ -157,33 +150,20 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings }) => {
             <Lock className="w-3.5 h-3.5 text-emerald-600 inline" />
             Petunjuk: Masukkan Kode Verifikasi yang tertera di bawah Kode QR atau ketikkan Nomor Surat Resmi yang terbit.
           </p>
-          {(() => {
-            const issuedLetters = StorageService.getSubmissions().filter((s) => s.officialLetterNumber || s.qrVerificationCode);
-            if (issuedLetters.length > 0) {
-              return (
-                <div className="flex flex-wrap items-center gap-2 pt-2">
-                  <span className="text-[11px] text-slate-400">Contoh Surat Terbit di Database:</span>
-                  {issuedLetters.slice(0, 3).map((item) => {
-                    const codeToUse = item.qrVerificationCode || item.officialLetterNumber || item.requestNumber;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setQueryCode(codeToUse);
-                          handleVerify(codeToUse);
-                        }}
-                        className="font-mono text-[11px] bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-blue-700 px-2.5 py-1 rounded-lg font-bold border border-slate-200 transition"
-                      >
-                        {item.officialLetterNumber || item.qrVerificationCode}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            }
-            return null;
-          })()}
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <span className="text-[11px] text-slate-400">Contoh Surat Terbit di Database:</span>
+            <button
+              type="button"
+              onClick={() => {
+                const sampleCode = '8230/321/SMKN1-BM/2026';
+                setQueryCode(sampleCode);
+                handleVerify(sampleCode);
+              }}
+              className="font-mono text-[11px] bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-blue-700 px-2.5 py-1 rounded-lg font-bold border border-slate-200 transition cursor-pointer"
+            >
+              8230/321/SMKN1-BM/2026
+            </button>
+          </div>
         </div>
       </div>
 

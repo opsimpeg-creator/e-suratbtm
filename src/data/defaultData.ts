@@ -447,9 +447,9 @@ export const INITIAL_TEMPLATES: LetterTemplate[] = [
   },
 ];
 
-export const INITIAL_SUBMISSIONS: SubmissionRequest[] = [
+export const DEMO_SAMPLE_SUBMISSIONS: SubmissionRequest[] = [
   {
-    id: 'sub-001',
+    id: 'demo-sample-001',
     requestNumber: 'SRT-202608-0001',
     letterTypeId: 'lt-1',
     letterTypeName: 'Surat Keterangan Aktif Sekolah',
@@ -467,7 +467,7 @@ export const INITIAL_SUBMISSIONS: SubmissionRequest[] = [
       nama_ortu: 'Bambang Pratama',
     },
     status: 'Selesai',
-    officialLetterNumber: '420/001/TU-SMK/2026',
+    officialLetterNumber: '8230/321/SMKN1-BM/2026',
     officialLetterDate: '2026-08-05',
     qrVerificationCode: 'VERIF-SRT-202608-0001-8849',
     digitalSignatureApplied: true,
@@ -488,14 +488,14 @@ export const INITIAL_SUBMISSIONS: SubmissionRequest[] = [
         status: 'Selesai',
         timestamp: '2026-08-05T11:00:00Z',
         actor: 'Administrator TU Utama',
-        note: 'Surat resmi telah diterbitkan dengan nomor 420/001/TU-SMK/2026.',
+        note: 'Surat resmi telah diterbitkan dengan nomor 8230/321/SMKN1-BM/2026.',
       },
     ],
     createdAt: '2026-08-05T08:30:00Z',
     updatedAt: '2026-08-05T11:00:00Z',
   },
   {
-    id: 'sub-002',
+    id: 'demo-sample-002',
     requestNumber: 'SRT-202608-0002',
     letterTypeId: 'lt-2',
     letterTypeName: 'Surat Keterangan Alumni / Lulus',
@@ -511,7 +511,11 @@ export const INITIAL_SUBMISSIONS: SubmissionRequest[] = [
       status_saat_ini: 'Bekerja',
       tempat_kerja_kuliah: 'PT. Telekomunikasi Indonesia',
     },
-    status: 'Diproses',
+    status: 'Selesai',
+    officialLetterNumber: '420/002/BTM-VII/2026',
+    officialLetterDate: '2026-08-06',
+    qrVerificationCode: 'VERIF-SRT-202608-0002-9921',
+    digitalSignatureApplied: true,
     timeline: [
       {
         status: 'Menunggu',
@@ -525,12 +529,18 @@ export const INITIAL_SUBMISSIONS: SubmissionRequest[] = [
         actor: 'Sari Indah (Petugas Loket)',
         note: 'Sedang dilakukan pencocokan nomor seri Ijazah tahun 2024.',
       },
+      {
+        status: 'Selesai',
+        timestamp: '2026-08-06T10:00:00Z',
+        actor: 'Administrator TU Utama',
+        note: 'Surat resmi telah diterbitkan dengan nomor 420/002/BTM-VII/2026.',
+      },
     ],
     createdAt: '2026-08-05T14:20:00Z',
-    updatedAt: '2026-08-06T08:10:00Z',
+    updatedAt: '2026-08-06T10:00:00Z',
   },
   {
-    id: 'sub-003',
+    id: 'demo-sample-003',
     requestNumber: 'SRT-202608-0003',
     letterTypeId: 'lt-3',
     letterTypeName: 'Surat Rekomendasi Beasiswa',
@@ -545,7 +555,7 @@ export const INITIAL_SUBMISSIONS: SubmissionRequest[] = [
       nilai_rapor: '89.40',
       prestasi: 'Juara 2 Lomba Debat Bahasa Indonesia Tingkat Kabupaten Balangan',
     },
-    status: 'Menunggu',
+    status: 'Diproses',
     timeline: [
       {
         status: 'Menunggu',
@@ -553,12 +563,18 @@ export const INITIAL_SUBMISSIONS: SubmissionRequest[] = [
         actor: 'Siswa (Sistem)',
         note: 'Pengajuan permohonan baru masuk.',
       },
+      {
+        status: 'Diproses',
+        timestamp: '2026-08-06T09:30:00Z',
+        actor: 'Budi Santoso (Staf TU)',
+        note: 'Verifikasi berkas nilai rapor dan piagam prestasi lomba.',
+      },
     ],
     createdAt: '2026-08-06T02:00:00Z',
-    updatedAt: '2026-08-06T02:00:00Z',
+    updatedAt: '2026-08-06T09:30:00Z',
   },
   {
-    id: 'sub-004',
+    id: 'demo-sample-004',
     requestNumber: 'SRT-202608-0004',
     letterTypeId: 'lt-1',
     letterTypeName: 'Surat Keterangan Aktif Sekolah',
@@ -595,6 +611,9 @@ export const INITIAL_SUBMISSIONS: SubmissionRequest[] = [
     updatedAt: '2026-08-04T11:30:00Z',
   },
 ];
+
+// Initial submissions for real database starts empty so it only holds real data from user/spreadsheet
+export const INITIAL_SUBMISSIONS: SubmissionRequest[] = [];
 
 export const INITIAL_AUDIT_LOGS: AuditLog[] = [
   {

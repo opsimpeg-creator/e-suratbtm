@@ -182,8 +182,20 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
           </button>
         </form>
 
-        <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
-          <span>Contoh no resi sampel: <b>SRT-202608-0001</b></span>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 pt-2 border-t border-slate-100">
+          <span>
+            Contoh no resi sampel:{' '}
+            <button
+              type="button"
+              onClick={() => {
+                setSearchInput('SRT-202608-0001');
+                handleSearch('SRT-202608-0001');
+              }}
+              className="font-mono font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer bg-blue-50 px-1.5 py-0.5 rounded"
+            >
+              SRT-202608-0001
+            </button>
+          </span>
           <button
             onClick={() => setActiveTab('verifikasi')}
             className="text-blue-700 font-semibold hover:underline flex items-center gap-1"

@@ -17,6 +17,7 @@ import {
   INITIAL_FORM_FIELDS,
   INITIAL_TEMPLATES,
   INITIAL_SUBMISSIONS,
+  DEMO_SAMPLE_SUBMISSIONS,
   INITIAL_AUDIT_LOGS,
   INITIAL_COMPLAINTS
 } from '../data/defaultData';
@@ -371,18 +372,50 @@ export const StorageService = {
     this.addAuditLog('admin_tu', 'UPDATE_TEMPLATE', `Memperbarui template surat ID: ${template.id}`);
   },
 
-  // Submissions
+  // Submissions (Only holds real submissions in admin/database)
   getSubmissions(): SubmissionRequest[] {
-    return getStored<SubmissionRequest[]>(KEYS.SUBMISSIONS, INITIAL_SUBMISSIONS);
+    const rawList = getStored<SubmissionRequest[]>(KEYS.SUBMISSIONS, INITIAL_SUBMISSIONS);
+    // Filter out legacy dummy submissions so the admin table only displays real data
+    const dummyIds = new Set(['sub-001', 'sub-002', 'sub-003', 'sub-004', 'demo-sample-001', 'demo-sample-002', 'demo-sample-003', 'demo-sample-004']);
+    const realList = rawList.filter((s) => !dummyIds.has(s.id));
+    if (realList.length !== rawList.length) {
+      setStored(KEYS.SUBMISSIONS, realList);
+    }
+    return realList;
+  },
+  getSampleSubmissions(): SubmissionRequest[] {
+    return DEMO_SAMPLE_SUBMISSIONS;
   },
   getSubmissionByNumber(requestNumber: string): SubmissionRequest | undefined {
-    return this.getSubmissions().find(
-      (s) => s.requestNumber.toLowerCase().trim() === requestNumber.toLowerCase().trim()
+    const q = requestNumber.toLowerCase().trim();
+    // 1. Search in real database first
+    const realFound = this.getSubmissions().find(
+      (s) => s.requestNumber && s.requestNumber.toLowerCase().trim() === q
+    );
+    if (realFound) return realFound;
+
+    // 2. Fallback to interactive sample dataset for public tracking/testing
+    return DEMO_SAMPLE_SUBMISSIONS.find(
+      (s) => s.requestNumber && s.requestNumber.toLowerCase().trim() === q
     );
   },
   getSubmissionByQr(qrCode: string): SubmissionRequest | undefined {
-    return this.getSubmissions().find(
-      (s) => (s.qrVerificationCode && s.qrVerificationCode === qrCode) || (s.officialLetterNumber && s.officialLetterNumber === qrCode)
+    const q = qrCode.toLowerCase().trim();
+    // 1. Search in real database first
+    const realFound = this.getSubmissions().find(
+      (s) =>
+        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === q) ||
+        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === q) ||
+        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q)
+    );
+    if (realFound) return realFound;
+
+    // 2. Fallback to interactive sample dataset for public QR/verification
+    return DEMO_SAMPLE_SUBMISSIONS.find(
+      (s) =>
+        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === q) ||
+        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === q) ||
+        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q)
     );
   },
   saveSubmissions(submissions: SubmissionRequest[]): void {
