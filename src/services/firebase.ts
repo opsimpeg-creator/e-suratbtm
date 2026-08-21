@@ -170,18 +170,6 @@ export function isDummySubmission(s: any): boolean {
     'demo-sample-004',
   ]);
   if (s.id && dummyIds.has(String(s.id))) return true;
-
-  const name = String(s.applicantName || s.formData?.nama || '').toLowerCase().trim();
-  const dummyNames = [
-    'sofia amira',
-    'muhammad rafi',
-    'muhammad rizky pratama',
-    'anisa nur aini',
-    'dewi lestari',
-    'bagas aditya',
-  ];
-  if (dummyNames.some((dn) => name.includes(dn))) return true;
-
   return false;
 }
 
@@ -189,8 +177,6 @@ export function isDummyComplaint(c: any): boolean {
   if (!c || typeof c !== 'object') return true;
   const dummyIds = new Set(['tkt-001', 'tkt-002']);
   if (c.id && dummyIds.has(String(c.id))) return true;
-  const sender = String(c.senderName || '').toLowerCase().trim();
-  if (sender.includes('budi santoso') && c.ticketNumber === 'TKT-202608-0001') return true;
   return false;
 }
 
