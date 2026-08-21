@@ -79,6 +79,29 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   });
 
 
+  const getTabTitle = (tab: string) => {
+    switch (tab) {
+      case 'admin-dashboard':
+        return 'Dashboard';
+      case 'permohonan':
+        return 'Data Permohonan Surat';
+      case 'jenis-surat':
+        return 'Jenis Surat & Form Builder';
+      case 'log-audit':
+        return 'Log Aktivitas & Audit';
+      case 'pengaduan':
+        return 'Pesan & Pengaduan';
+      case 'pengguna':
+        return 'Pengguna & Hak Akses';
+      case 'sync-spreadsheet':
+        return 'Sync Google Spreadsheet';
+      case 'pengaturan':
+        return 'Setting Sekolah';
+      default:
+        return tab.replace('admin-', '').replace('-', ' ');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col lg:flex-row font-sans">
       {/* Mobile Backdrop Overlay */}
@@ -89,48 +112,45 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         />
       )}
 
-      {/* Mobile Top bar */}
-      <div className="lg:hidden bg-slate-900 text-white p-4 flex items-center justify-between border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <span className="font-extrabold text-sm text-blue-400">PANEL ADMIN TU</span>
-        </div>
-        <button
-          onClick={toggleSidebar}
-          className="p-2 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition"
-        >
-          {mobileSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
-      </div>
-
       {/* Sidebar Navigation */}
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-40 bg-slate-900 text-slate-300 flex flex-col justify-between transition-all duration-300 transform overflow-hidden ${
-          mobileSidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full'
+          mobileSidebarOpen ? 'translate-x-0 w-64 shadow-2xl' : '-translate-x-full'
         } ${
           sidebarOpen ? 'lg:translate-x-0 lg:w-64 lg:flex' : 'lg:-translate-x-full lg:w-0 lg:hidden'
         }`}
       >
         <div className="space-y-6 p-5">
           {/* Logo Identity */}
-          <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
-            <div className="w-10 h-10 rounded-xl bg-white/10 p-1 flex items-center justify-center font-bold text-white text-base shadow-md shrink-0 overflow-hidden">
-              {settings.logoUrl ? (
-                <img
-                  src={settings.logoUrl}
-                  alt="Logo"
-                  className="w-full h-full object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
-                />
-              ) : (
-                'TU'
-              )}
+          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/10 p-1 flex items-center justify-center font-bold text-white text-base shadow-md shrink-0 overflow-hidden">
+                {settings.logoUrl ? (
+                  <img
+                    src={settings.logoUrl}
+                    alt="Logo"
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  'TU'
+                )}
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-bold text-white text-sm truncate max-w-[130px]">{settings.schoolName}</h2>
+                <p className="text-[11px] text-blue-400 font-medium">Portal Administrator</p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-bold text-white text-sm line-clamp-1">{settings.schoolName}</h2>
-              <p className="text-[11px] text-blue-400 font-medium">Portal Administrator</p>
-            </div>
+            {/* Close button for mobile sidebar */}
+            <button
+              onClick={() => setMobileSidebarOpen(false)}
+              className="lg:hidden p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+              title="Tutup Menu"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
           {/* User Badge */}
@@ -200,22 +220,22 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto">
         {/* Top bar header */}
-        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-2xs sticky top-0 z-30">
-          <div className="flex items-center gap-3">
+        <header className="bg-white border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between shadow-2xs sticky top-0 z-30">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={toggleSidebar}
-              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-              title={sidebarOpen ? "Sembunyikan Sidebar" : "Tampilkan Sidebar"}
+              className="p-2 -ml-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer shrink-0"
+              title={sidebarOpen ? "Sembunyikan / Buka Sidebar" : "Tampilkan Sidebar"}
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-lg font-bold text-slate-900 capitalize">
-              {activeTab.replace('admin-', '').replace('-', ' ')}
+            <h1 className="text-base sm:text-lg font-bold text-slate-900 truncate">
+              {getTabTitle(activeTab)}
             </h1>
           </div>
 
-          <div className="flex items-center gap-4 text-xs font-medium">
-            <div className="hidden sm:flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl text-slate-600 border border-slate-200">
+          <div className="flex items-center gap-2 sm:gap-4 text-xs font-medium shrink-0">
+            <div className="hidden md:flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl text-slate-600 border border-slate-200">
               <Database className="w-3.5 h-3.5 text-emerald-600" />
               <span>
                 Spreadsheet ID: <b className="font-mono text-slate-800">{settings.spreadsheetId.slice(0, 10)}...</b>
@@ -229,7 +249,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             >
               <Bell className="w-5 h-5" />
               {pendingCount > 0 && (
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
               )}
             </button>
           </div>
