@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SchoolSettings } from '../../types';
 import { StorageService } from '../../services/storage';
 import { OperatingHoursManagement } from './OperatingHoursManagement';
 import { ConfirmModal } from '../common/ConfirmModal';
-import { Settings, Save, Check, Upload, RefreshCw, Download, FileUp, AlertTriangle } from 'lucide-react';
+import { Settings, Save, Check, Upload, RefreshCw, Download, FileUp, AlertTriangle, Loader2 } from 'lucide-react';
 
 interface SettingsPageProps {
   settings: SchoolSettings;
@@ -12,20 +12,50 @@ interface SettingsPageProps {
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onRefresh }) => {
   const [formData, setFormData] = useState<SchoolSettings>(settings);
+  const [classesText, setClassesText] = useState<string>((settings.classes || []).join(', '));
+  const [majorsText, setMajorsText] = useState<string>((settings.majors || []).join(', '));
+  const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [importStatus, setImportStatus] = useState('');
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+
+  // Synchronize when settings prop changes from Firestore / background refresh
+  useEffect(() => {
+    setFormData(settings);
+    setClassesText((settings.classes || []).join(', '));
+    setMajorsText((settings.majors || []).join(', '));
+  }, [settings]);
 
   const handleChange = (field: keyof SchoolSettings, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    StorageService.saveSettings(formData);
+    setIsSaving(true);
+
+    const parsedClasses = classesText
+      .split(/[\n,]+/)
+      .map((c) => c.trim())
+      .filter(Boolean);
+
+    const parsedMajors = majorsText
+      .split(/[\n,]+/)
+      .map((m) => m.trim())
+      .filter(Boolean);
+
+    const updatedSettings: SchoolSettings = {
+      ...formData,
+      classes: parsedClasses.length > 0 ? parsedClasses : formData.classes,
+      majors: parsedMajors.length > 0 ? parsedMajors : formData.majors,
+    };
+
+    StorageService.saveSettings(updatedSettings);
     onRefresh();
+
+    setIsSaving(false);
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
+    setTimeout(() => setSavedSuccess(false), 3000);
   };
 
   const handleExportBackup = () => {
@@ -170,18 +200,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onRefresh 
               </label>
               <textarea
                 rows={4}
-                value={(formData.classes || []).join(', ')}
-                onChange={(e) =>
-                  handleChange(
-                    'classes',
-                    e.target.value.split(',').map((c) => c.trim()).filter(Boolean)
-                  )
-                }
+                value={classesText}
+                onChange={(e) => setClassesText(e.target.value)}
                 placeholder="X (Sepuluh), X-A (Sepuluh A), X-B (Sepuluh B), XI (Sebelas)..."
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs leading-relaxed"
               />
               <p className="text-[10px] text-slate-400 mt-1">
-                Jumlah terdaftar: <strong>{(formData.classes || []).length} kelas</strong>
+                Jumlah terdaftar:{' '}
+                <strong>
+                  {
+                    classesText
+                      .split(/[\n,]+/)
+                      .map((c) => c.trim())
+                      .filter(Boolean).length
+                  }{' '}
+                  kelas
+                </strong>
               </p>
             </div>
 
@@ -191,18 +225,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onRefresh 
               </label>
               <textarea
                 rows={4}
-                value={(formData.majors || []).join(', ')}
-                onChange={(e) =>
-                  handleChange(
-                    'majors',
-                    e.target.value.split(',').map((m) => m.trim()).filter(Boolean)
-                  )
-                }
+                value={majorsText}
+                onChange={(e) => setMajorsText(e.target.value)}
                 placeholder="Teknik Jaringan Komputer dan Telekomunikasi (TJKT), Broadcasting dan Perfilman (BP), AKL, DKV, DPIB, TAB..."
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs leading-relaxed"
               />
               <p className="text-[10px] text-slate-400 mt-1">
-                Jumlah terdaftar: <strong>{(formData.majors || []).length} jurusan</strong>
+                Jumlah terdaftar:{' '}
+                <strong>
+                  {
+                    majorsText
+                      .split(/[\n,]+/)
+                      .map((m) => m.trim())
+                      .filter(Boolean).length
+                  }{' '}
+                  jurusan
+                </strong>
               </p>
             </div>
           </div>
@@ -268,10 +306,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onRefresh 
         <div className="pt-4 border-t border-slate-200 flex justify-end">
           <button
             type="submit"
-            className="bg-blue-700 hover:bg-blue-800 text-white font-bold px-8 py-3 rounded-xl text-xs shadow-md transition flex items-center gap-2"
+            disabled={isSaving}
+            className="bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-bold px-8 py-3 rounded-xl text-xs shadow-md transition flex items-center gap-2"
           >
-            <Save className="w-4 h-4" />
-            <span>Simpan Pengaturan Utama</span>
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Menyimpan ke Cloud...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>Simpan Pengaturan Utama</span>
+              </>
+            )}
           </button>
         </div>
       </form>
