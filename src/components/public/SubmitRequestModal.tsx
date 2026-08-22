@@ -245,15 +245,18 @@ export const SubmitRequestModal: React.FC<SubmitRequestModalProps> = ({
                   const value = formData[field.name] || field.defaultValue || '';
                   const rawOptions = field.options && field.options.length > 0 ? field.options : [];
                   let options = rawOptions;
-                  if (options.length === 0) {
-                    if (field.name === 'kelas' || field.label.toLowerCase().includes('kelas')) {
-                      options = settings.classes || [];
-                    } else if (
-                      field.name === 'jurusan' ||
-                      field.label.toLowerCase().includes('jurusan') ||
-                      field.label.toLowerCase().includes('keahlian')
-                    ) {
-                      options = settings.majors || [];
+                  if (field.name === 'kelas' || field.label.toLowerCase().includes('kelas')) {
+                    if (options.length <= 1 && settings.classes && settings.classes.length > 0) {
+                      options = settings.classes;
+                    }
+                  } else if (
+                    field.name === 'jurusan' ||
+                    field.label.toLowerCase().includes('jurusan') ||
+                    field.label.toLowerCase().includes('keahlian')
+                  ) {
+                    const hasOutdated = options.some((o) => o.includes('APHPi') || o.includes('APAT') || o.includes('Perikanan'));
+                    if ((options.length <= 1 || hasOutdated) && settings.majors && settings.majors.length > 0) {
+                      options = settings.majors;
                     }
                   }
 

@@ -96,10 +96,12 @@ function getStored<T>(key: string, fallback: T): T {
   }
 }
 
-function setStored<T>(key: string, value: T): void {
+function setStored<T>(key: string, value: T, notify = true): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-    window.dispatchEvent(new CustomEvent('tu_storage_updated', { detail: { key, value } }));
+    if (notify && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tu_storage_updated', { detail: { key, value } }));
+    }
   } catch (err) {
     console.error(`Error writing ${key} to storage:`, err);
   }
@@ -196,6 +198,32 @@ export const StorageService = {
   saveSettings(settings: SchoolSettings): void {
     setStored(KEYS.SETTINGS, settings);
     saveSettingsToFirebase(settings);
+
+    // Synchronize form fields representing 'kelas' or 'jurusan' so they immediately match the updated master lists
+    try {
+      const allFields = getStored<FormField[]>(KEYS.FORM_FIELDS, INITIAL_FORM_FIELDS);
+      let fieldsDirty = false;
+      allFields.forEach((f) => {
+        if (f.name === 'kelas' || (f.label.toLowerCase().includes('kelas') && ['dropdown', 'radio'].includes(f.type))) {
+          if (settings.classes && settings.classes.length > 0) {
+            f.options = [...settings.classes];
+            fieldsDirty = true;
+          }
+        }
+        if (f.name === 'jurusan' || (f.label.toLowerCase().includes('jurusan') && ['dropdown', 'radio'].includes(f.type))) {
+          if (settings.majors && settings.majors.length > 0) {
+            f.options = [...settings.majors];
+            fieldsDirty = true;
+          }
+        }
+      });
+      if (fieldsDirty) {
+        setStored(KEYS.FORM_FIELDS, allFields);
+        saveFormFieldsToFirebase(allFields);
+      }
+    } catch (e) {
+      console.warn('Sync form fields from master settings error:', e);
+    }
 
     // Background sync to Google Apps Script
     import('./appsScript').then(({ AppsScriptService }) => {
@@ -398,23 +426,35 @@ export const StorageService = {
   // Form Fields
   getFormFields(): FormField[] {
     const fields = getStored<FormField[]>(KEYS.FORM_FIELDS, INITIAL_FORM_FIELDS);
+    const settings = getStored<SchoolSettings>(KEYS.SETTINGS, INITIAL_SETTINGS);
     let dirty = false;
-    fields.forEach((f) => {
+    const normalized = fields.map((orig) => {
+      const f = { ...orig };
       if (f.name === 'jurusan' || f.label.toLowerCase().includes('jurusan')) {
         const hasOutdated = (f.options || []).some(
           (opt) => opt.includes('APHPi') || opt.includes('APAT') || opt.includes('Perikanan') || opt.includes('TSM')
         );
         if (hasOutdated || !f.options || f.options.length === 0) {
-          f.options = [...INITIAL_SETTINGS.majors];
+          f.options = settings.majors && settings.majors.length > 0 ? [...settings.majors] : [...INITIAL_SETTINGS.majors];
           dirty = true;
         }
       }
+      if (f.name === 'kelas' || (f.label.toLowerCase().includes('kelas') && ['dropdown', 'radio'].includes(f.type))) {
+        // If kelas options was truncated or empty (e.g. only 1 item like ['X (Sepuluh)'])
+        if (!f.options || f.options.length <= 1) {
+          f.options = settings.classes && settings.classes.length > 1 ? [...settings.classes] : [...INITIAL_SETTINGS.classes];
+          dirty = true;
+        }
+      }
+      return f;
     });
     if (dirty) {
-      setStored(KEYS.FORM_FIELDS, fields);
-      saveFormFieldsToFirebase(fields);
+      setTimeout(() => {
+        setStored(KEYS.FORM_FIELDS, normalized, false);
+        saveFormFieldsToFirebase(normalized);
+      }, 0);
     }
-    return fields;
+    return normalized;
   },
   getFieldsForLetterType(letterTypeId: string): FormField[] {
     const fields = this.getFormFields().filter((f) => f.letterTypeId === letterTypeId);
@@ -450,7 +490,9 @@ export const StorageService = {
     const rawList = getStored<SubmissionRequest[]>(KEYS.SUBMISSIONS, INITIAL_SUBMISSIONS);
     const realList = rawList.filter((s) => !isDummySubmission(s));
     if (realList.length !== rawList.length) {
-      setStored(KEYS.SUBMISSIONS, realList);
+      setTimeout(() => {
+        setStored(KEYS.SUBMISSIONS, realList, false);
+      }, 0);
     }
     return realList;
   },
@@ -694,7 +736,9 @@ export const StorageService = {
     const rawList = getStored<ComplaintTicket[]>(KEYS.COMPLAINTS, INITIAL_COMPLAINTS);
     const filtered = rawList.filter((c) => !isDummyComplaint(c));
     if (filtered.length !== rawList.length) {
-      setStored(KEYS.COMPLAINTS, filtered);
+      setTimeout(() => {
+        setStored(KEYS.COMPLAINTS, filtered, false);
+      }, 0);
     }
     return filtered;
   },

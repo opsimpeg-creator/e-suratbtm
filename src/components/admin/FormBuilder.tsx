@@ -80,7 +80,10 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
 
     const allFields = StorageService.getFormFields();
     const parsedOptions = ['dropdown', 'radio', 'checkbox'].includes(fieldType)
-      ? optionsText.split(',').map((o) => o.trim()).filter(Boolean)
+      ? optionsText
+          .split(/[\n,]+/)
+          .map((o) => o.trim())
+          .filter(Boolean)
       : undefined;
 
     const fieldNameKey = name.trim() ? name.trim().toLowerCase().replace(/\s+/g, '_') : label.toLowerCase().replace(/[^a-z0-9]/g, '_');
@@ -165,8 +168,9 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
   };
 
   const fillMasterClasses = () => {
-    if (settings.classes && settings.classes.length > 0) {
-      setOptionsText(settings.classes.join(', '));
+    const currentSettings = StorageService.getSettings();
+    if (currentSettings.classes && currentSettings.classes.length > 0) {
+      setOptionsText(currentSettings.classes.join(', '));
       if (!label) setLabel('Kelas');
       if (!name) setName('kelas');
       setFieldType('dropdown');
@@ -174,8 +178,9 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
   };
 
   const fillMasterMajors = () => {
-    if (settings.majors && settings.majors.length > 0) {
-      setOptionsText(settings.majors.join(', '));
+    const currentSettings = StorageService.getSettings();
+    if (currentSettings.majors && currentSettings.majors.length > 0) {
+      setOptionsText(currentSettings.majors.join(', '));
       if (!label) setLabel('Konsentrasi Keahlian / Jurusan');
       if (!name) setName('jurusan');
       setFieldType('dropdown');
