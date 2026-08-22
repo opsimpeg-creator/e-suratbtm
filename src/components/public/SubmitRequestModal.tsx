@@ -307,17 +307,9 @@ export const SubmitRequestModal: React.FC<SubmitRequestModalProps> = ({
 
                   return (
                     <div key={field.id} className={field.type === 'textarea' || field.type.startsWith('file_') ? 'sm:col-span-2' : ''}>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-xs font-bold text-slate-700">
-                          {field.label} {field.required && <span className="text-rose-600">*</span>}
-                        </label>
-                        {isFromMaster && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md font-medium" title={masterType}>
-                            <Database className="w-3 h-3 text-emerald-600" />
-                            <span>Spreadsheet</span>
-                          </span>
-                        )}
-                      </div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        {field.label} {field.required && <span className="text-rose-600">*</span>}
+                      </label>
 
                       {/* TEXT / NUMBER / EMAIL / PHONE / DATE */}
                       {['text', 'number', 'email', 'phone', 'date'].includes(field.type) && (
