@@ -286,33 +286,50 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row gap-3">
+          <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row flex-wrap gap-3">
             <button
               onClick={() => PdfGenerator.generateProofPdf(foundRequest, settings)}
-              className="px-5 py-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition flex items-center justify-center gap-2"
+              className="px-5 py-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer"
             >
               <Download className="w-4 h-4" />
               <span>Unduh Bukti Pengajuan (PDF)</span>
             </button>
 
             {foundRequest.status === 'Selesai' && (
-              <button
-                onClick={() => {
-                  if (foundRequest.issuedDocumentUrl) {
-                    handleOpenPreview(
-                      foundRequest.issuedDocumentUrl,
-                      foundRequest.formData?._officialFileName || `Surat_Resmi_${foundRequest.requestNumber}.pdf`
-                    );
-                  } else {
-                    const tpl = StorageService.getTemplateForLetterType(foundRequest.letterTypeId);
-                    PdfGenerator.generateOfficialLetterPdf(foundRequest, tpl, settings);
-                  }
-                }}
-                className="px-6 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-md flex items-center justify-center gap-2"
-              >
-                <Eye className="w-4 h-4" />
-                <span>Pratinjau / Unduh Surat Resmi</span>
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    if (foundRequest.issuedDocumentUrl) {
+                      handleOpenPreview(
+                        foundRequest.issuedDocumentUrl,
+                        foundRequest.formData?._officialFileName || `Surat_Resmi_${foundRequest.requestNumber}.pdf`
+                      );
+                    } else {
+                      const tpl = StorageService.getTemplateForLetterType(foundRequest.letterTypeId);
+                      PdfGenerator.generateOfficialLetterPdf(foundRequest, tpl, settings);
+                    }
+                  }}
+                  className="px-6 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Eye className="w-4 h-4" />
+                  <span>Pratinjau Surat Resmi</span>
+                </button>
+
+                {foundRequest.issuedDocumentUrl && (
+                  <button
+                    onClick={() => {
+                      handleDownloadFile(
+                        foundRequest.issuedDocumentUrl!,
+                        foundRequest.formData?._officialFileName || `Surat_Resmi_${foundRequest.requestNumber}.pdf`
+                      );
+                    }}
+                    className="px-5 py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <FileDown className="w-4 h-4" />
+                    <span>Download Surat Resmi (PDF)</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>

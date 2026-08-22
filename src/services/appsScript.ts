@@ -791,6 +791,7 @@ function logActivity(ss, user, action, details) {
       }
 
       const permohonanList = data.permohonan || [];
+      const currentSubmissions = StorageService.getSubmissions();
       const parsedSubmissions: any[] = [];
 
       for (const item of permohonanList) {
@@ -801,19 +802,34 @@ function logActivity(ss, user, action, details) {
           formData = {};
         }
 
+        const itemId = String(item.ID || item.id || ('sub-' + Date.now()));
+        const reqNum = String(item.NoPermohonan || item.requestNumber || 'SRT-000');
+        const existingSub = currentSubmissions.find(
+          (s) => (s.requestNumber && s.requestNumber.trim() === reqNum.trim()) || s.id === itemId
+        );
+
         parsedSubmissions.push({
-          id: String(item.ID || item.id || ('sub-' + Date.now())),
-          requestNumber: String(item.NoPermohonan || item.requestNumber || 'SRT-000'),
-          letterTypeId: 'lt-1',
-          letterTypeName: String(item.JenisSurat || item.letterTypeName || 'Surat Keterangan'),
-          applicantName: String(item.NamaPemohon || item.applicantName || 'Pemohon'),
-          applicantEmail: String(item.Email || item.applicantEmail || ''),
-          applicantPhone: String(item.HP || item.applicantPhone || ''),
-          applicantRole: 'siswa',
-          formData: formData,
-          status: item.Status || 'Menunggu',
-          officialLetterNumber: item.NoSuratResmi || undefined,
-          timeline: [
+          id: itemId,
+          requestNumber: reqNum,
+          letterTypeId: existingSub?.letterTypeId || 'lt-1',
+          letterTypeName: String(item.JenisSurat || item.letterTypeName || existingSub?.letterTypeName || 'Surat Keterangan'),
+          applicantName: String(item.NamaPemohon || item.applicantName || existingSub?.applicantName || 'Pemohon'),
+          applicantEmail: String(item.Email || item.applicantEmail || existingSub?.applicantEmail || ''),
+          applicantPhone: String(item.HP || item.applicantPhone || existingSub?.applicantPhone || ''),
+          applicantRole: existingSub?.applicantRole || 'siswa',
+          formData: {
+            ...(existingSub?.formData || {}),
+            ...formData,
+            ...(existingSub?.formData?._officialFileName ? { _officialFileName: existingSub.formData._officialFileName } : {}),
+            ...(existingSub?.formData?._officialFileUrl ? { _officialFileUrl: existingSub.formData._officialFileUrl } : {}),
+          },
+          uploadedFiles: existingSub?.uploadedFiles,
+          status: item.Status || existingSub?.status || 'Menunggu',
+          officialLetterNumber: item.NoSuratResmi || existingSub?.officialLetterNumber || undefined,
+          officialLetterDate: existingSub?.officialLetterDate,
+          issuedDocumentUrl: item.FileUrl || item.issuedDocumentUrl || existingSub?.issuedDocumentUrl || undefined,
+          qrVerificationCode: existingSub?.qrVerificationCode || `VERIF-${reqNum}-${Math.floor(1000 + Math.random() * 9000)}`,
+          timeline: existingSub?.timeline && existingSub.timeline.length > 0 ? existingSub.timeline : [
             {
               status: item.Status || 'Menunggu',
               timestamp: item.Tanggal || new Date().toISOString(),
@@ -821,7 +837,7 @@ function logActivity(ss, user, action, details) {
               note: 'Data diambil langsung dari Google Spreadsheet.',
             }
           ],
-          createdAt: item.Tanggal || new Date().toISOString(),
+          createdAt: item.Tanggal || existingSub?.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
       }

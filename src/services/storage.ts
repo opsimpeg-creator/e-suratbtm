@@ -419,25 +419,38 @@ export const StorageService = {
   },
   getSubmissionByNumber(requestNumber: string): SubmissionRequest | undefined {
     const q = requestNumber.toLowerCase().trim();
-    // 1. Search in real database first
+    if (!q) return undefined;
+    
+    // 1. Search in real database first (checks requestNumber, officialLetterNumber, qrVerificationCode, or applicantName)
     const realFound = this.getSubmissions().find(
-      (s) => s.requestNumber && s.requestNumber.toLowerCase().trim() === q
+      (s) =>
+        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q) ||
+        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === q) ||
+        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === q) ||
+        (s.applicantName && s.applicantName.toLowerCase().trim() === q)
     );
     if (realFound) return realFound;
 
     // 2. Fallback to interactive sample dataset for public tracking/testing
     return DEMO_SAMPLE_SUBMISSIONS.find(
-      (s) => s.requestNumber && s.requestNumber.toLowerCase().trim() === q
+      (s) =>
+        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q) ||
+        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === q) ||
+        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === q) ||
+        (s.applicantName && s.applicantName.toLowerCase().trim() === q)
     );
   },
   getSubmissionByQr(qrCode: string): SubmissionRequest | undefined {
     const q = qrCode.toLowerCase().trim();
+    if (!q) return undefined;
+    
     // 1. Search in real database first
     const realFound = this.getSubmissions().find(
       (s) =>
         (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === q) ||
         (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === q) ||
-        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q)
+        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q) ||
+        (s.applicantName && s.applicantName.toLowerCase().trim() === q)
     );
     if (realFound) return realFound;
 
@@ -446,7 +459,8 @@ export const StorageService = {
       (s) =>
         (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === q) ||
         (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === q) ||
-        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q)
+        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q) ||
+        (s.applicantName && s.applicantName.toLowerCase().trim() === q)
     );
   },
   saveSubmissions(submissions: SubmissionRequest[]): void {
@@ -540,7 +554,8 @@ export const StorageService = {
     rejectionReason?: string,
     officialLetterNumber?: string,
     officialLetterDate?: string,
-    issuedDocumentUrl?: string
+    issuedDocumentUrl?: string,
+    officialFileName?: string
   ): SubmissionRequest | undefined {
     const submissions = this.getSubmissions();
     const idx = submissions.findIndex((s) => s.id === id);
@@ -553,7 +568,15 @@ export const StorageService = {
     if (note) req.processingNote = note;
     if (officialLetterNumber) req.officialLetterNumber = officialLetterNumber;
     if (officialLetterDate) req.officialLetterDate = officialLetterDate;
-    if (issuedDocumentUrl !== undefined) req.issuedDocumentUrl = issuedDocumentUrl;
+    if (issuedDocumentUrl !== undefined && issuedDocumentUrl !== '') {
+      req.issuedDocumentUrl = issuedDocumentUrl;
+    }
+    if (!req.formData) {
+      req.formData = {};
+    }
+    if (officialFileName) {
+      req.formData._officialFileName = officialFileName;
+    }
     if (newStatus === 'Selesai') {
       req.digitalSignatureApplied = true;
     }
@@ -573,7 +596,7 @@ export const StorageService = {
 
     // Update status di Google Spreadsheet
     import('./appsScript').then(({ AppsScriptService }) => {
-      AppsScriptService.updateStatusInAppsScript(req.requestNumber, newStatus, actorName, officialLetterNumber, issuedDocumentUrl).catch((err) => {
+      AppsScriptService.updateStatusInAppsScript(req.requestNumber, newStatus, actorName, officialLetterNumber, req.issuedDocumentUrl).catch((err) => {
         console.warn('Apps Script update status background:', err);
       });
     });

@@ -315,7 +315,8 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
       modalStatus === 'Ditolak' ? modalRejection : undefined,
       modalStatus === 'Selesai' ? officialNumberInput : undefined,
       modalStatus === 'Selesai' ? officialDateInput : undefined,
-      uploadedOfficialFileUrl
+      uploadedOfficialFileUrl,
+      uploadedOfficialFileName
     );
 
     onRefresh();
@@ -949,17 +950,18 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        if (uploadedOfficialFileUrl) {
+                        const fileUrlToUse = uploadedOfficialFileUrl || selectedRequest.issuedDocumentUrl;
+                        if (fileUrlToUse) {
                           handleDownloadFile(
-                            uploadedOfficialFileUrl,
-                            uploadedOfficialFileName || `Surat_Resmi_${selectedRequest.requestNumber}.pdf`
+                            fileUrlToUse,
+                            uploadedOfficialFileName || selectedRequest.formData?._officialFileName || `Surat_Resmi_${selectedRequest.requestNumber}.pdf`
                           );
                         } else {
                           const tpl = StorageService.getTemplateForLetterType(selectedRequest.letterTypeId);
                           PdfGenerator.generateOfficialLetterPdf(selectedRequest, tpl, settings);
                         }
                       }}
-                      className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-xs transition"
+                      className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-xs transition cursor-pointer"
                     >
                       <FileCheck className="w-4 h-4" />
                       <span>Unduh Surat Resmi</span>
@@ -1151,6 +1153,33 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
           onStampComplete={(stampedUri, stampedName) => {
             setUploadedOfficialFileUrl(stampedUri);
             setUploadedOfficialFileName(stampedName);
+
+            // Auto-persist directly to StorageService so it is instantly saved and available for download
+            const currentUser = StorageService.getCurrentUser();
+            const actorName = currentUser ? `${currentUser.name} (${currentUser.role})` : 'Staf TU Admin';
+            const targetStatus = modalStatus === 'Menunggu' || modalStatus === 'Diproses' ? 'Selesai' : modalStatus;
+            setModalStatus(targetStatus);
+
+            StorageService.updateRequestStatus(
+              selectedRequest.id,
+              targetStatus,
+              actorName,
+              modalNote || 'QR Code verifikasi resmi telah berhasil disematkan pada dokumen surat.',
+              undefined,
+              officialNumberInput || selectedRequest.officialLetterNumber,
+              officialDateInput || selectedRequest.officialLetterDate || new Date().toISOString().split('T')[0],
+              stampedUri,
+              stampedName
+            );
+
+            // Update local selected request state
+            selectedRequest.issuedDocumentUrl = stampedUri;
+            selectedRequest.status = targetStatus;
+            if (!selectedRequest.formData) selectedRequest.formData = {};
+            selectedRequest.formData._officialFileName = stampedName;
+            if (officialNumberInput) selectedRequest.officialLetterNumber = officialNumberInput;
+
+            onRefresh();
           }}
         />
       )}
