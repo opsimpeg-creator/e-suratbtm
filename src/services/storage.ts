@@ -418,50 +418,56 @@ export const StorageService = {
     return DEMO_SAMPLE_SUBMISSIONS;
   },
   getSubmissionByNumber(requestNumber: string): SubmissionRequest | undefined {
-    const q = requestNumber.toLowerCase().trim();
+    let q = (requestNumber || '').trim();
     if (!q) return undefined;
-    
-    // 1. Search in real database first (checks requestNumber, officialLetterNumber, qrVerificationCode, or applicantName)
-    const realFound = this.getSubmissions().find(
-      (s) =>
-        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q) ||
-        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === q) ||
-        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === q) ||
-        (s.applicantName && s.applicantName.toLowerCase().trim() === q)
-    );
-    if (realFound) return realFound;
 
-    // 2. Fallback to interactive sample dataset for public tracking/testing
-    return DEMO_SAMPLE_SUBMISSIONS.find(
+    // If it's a URL or contains query parameters, extract the code
+    if (q.includes('http://') || q.includes('https://') || q.includes('?')) {
+      try {
+        const urlStr = q.startsWith('http') ? q : `https://dummy.app/${q}`;
+        const parsed = new URL(urlStr);
+        const extracted = parsed.searchParams.get('verify') || 
+                          parsed.searchParams.get('code') || 
+                          parsed.searchParams.get('qr') || 
+                          parsed.searchParams.get('v') || 
+                          parsed.searchParams.get('track') || 
+                          parsed.searchParams.get('resi') || 
+                          parsed.searchParams.get('req');
+        if (extracted) q = extracted.trim();
+      } catch {
+        // ignore fallback to raw string
+      }
+    }
+
+    const qLower = q.toLowerCase().trim();
+    const allList = [...this.getSubmissions(), ...DEMO_SAMPLE_SUBMISSIONS];
+
+    // 1. Exact matches
+    const exact = allList.find(
       (s) =>
-        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q) ||
-        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === q) ||
-        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === q) ||
-        (s.applicantName && s.applicantName.toLowerCase().trim() === q)
+        (s.requestNumber && s.requestNumber.toLowerCase().trim() === qLower) ||
+        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === qLower) ||
+        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === qLower) ||
+        (s.applicantName && s.applicantName.toLowerCase().trim() === qLower)
     );
+    if (exact) return exact;
+
+    // 2. Partial/contains matches (e.g. VERIF-SRT-202608-0010-3776 contains SRT-202608-0010)
+    const partial = allList.find((s) => {
+      const reqNum = (s.requestNumber || '').toLowerCase().trim();
+      const qrCode = (s.qrVerificationCode || '').toLowerCase().trim();
+      const offNum = (s.officialLetterNumber || '').toLowerCase().trim();
+      
+      if (reqNum && (qLower.includes(reqNum) || reqNum.includes(qLower))) return true;
+      if (qrCode && (qLower.includes(qrCode) || qrCode.includes(qLower))) return true;
+      if (offNum && (qLower.includes(offNum) || offNum.includes(qLower))) return true;
+      return false;
+    });
+
+    return partial;
   },
   getSubmissionByQr(qrCode: string): SubmissionRequest | undefined {
-    const q = qrCode.toLowerCase().trim();
-    if (!q) return undefined;
-    
-    // 1. Search in real database first
-    const realFound = this.getSubmissions().find(
-      (s) =>
-        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === q) ||
-        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === q) ||
-        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q) ||
-        (s.applicantName && s.applicantName.toLowerCase().trim() === q)
-    );
-    if (realFound) return realFound;
-
-    // 2. Fallback to interactive sample dataset for public QR/verification
-    return DEMO_SAMPLE_SUBMISSIONS.find(
-      (s) =>
-        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === q) ||
-        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === q) ||
-        (s.requestNumber && s.requestNumber.toLowerCase().trim() === q) ||
-        (s.applicantName && s.applicantName.toLowerCase().trim() === q)
-    );
+    return this.getSubmissionByNumber(qrCode);
   },
   saveSubmissions(submissions: SubmissionRequest[]): void {
     setStored(KEYS.SUBMISSIONS, submissions);

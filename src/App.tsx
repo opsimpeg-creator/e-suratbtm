@@ -45,11 +45,60 @@ export default function App() {
   const [complaints, setComplaints] = useState<ComplaintTicket[]>(() => StorageService.getComplaints());
   const [currentUser, setCurrentUser] = useState<User | null>(() => StorageService.getCurrentUser());
 
-  // Navigation State
-  const [activeTab, setActiveTab] = useState<string>('beranda');
+  // Navigation State & URL Parameter Auto-routing
+  const [initialVerifyCode, setInitialVerifyCode] = useState<string>(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      return (
+        searchParams.get('verify') ||
+        searchParams.get('code') ||
+        searchParams.get('qr') ||
+        searchParams.get('v') ||
+        searchParams.get('verif') ||
+        ''
+      ).trim();
+    } catch {
+      return '';
+    }
+  });
+
+  const [initialTrackNumber, setInitialTrackNumber] = useState<string>(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      return (
+        searchParams.get('track') ||
+        searchParams.get('resi') ||
+        searchParams.get('cek') ||
+        searchParams.get('req') ||
+        ''
+      ).trim();
+    } catch {
+      return '';
+    }
+  });
+
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const hash = window.location.hash;
+      const verifyCode = searchParams.get('verify') || searchParams.get('code') || searchParams.get('qr') || searchParams.get('v') || searchParams.get('verif');
+      if (verifyCode) return 'verifikasi';
+
+      const trackNum = searchParams.get('track') || searchParams.get('resi') || searchParams.get('cek') || searchParams.get('req');
+      if (trackNum) return 'cek-status';
+
+      if (hash === '#verifikasi' || hash === '#verify') return 'verifikasi';
+      if (hash === '#cek-status' || hash === '#track') return 'cek-status';
+      if (hash === '#informasi') return 'informasi';
+      if (hash === '#kontak') return 'kontak';
+    } catch {
+      // ignore
+    }
+    return 'beranda';
+  });
+
   const [selectedLetterTypeForSubmit, setSelectedLetterTypeForSubmit] = useState<LetterType | null>(null);
   const [selectedLetterTypeIdForBuilder, setSelectedLetterTypeIdForBuilder] = useState<string | null>(null);
-  const [initialTrackNumber, setInitialTrackNumber] = useState<string>('');
   const [requestFilterStatus, setRequestFilterStatus] = useState<string>('all');
   const [selectedRequestForDetail, setSelectedRequestForDetail] = useState<SubmissionRequest | null>(null);
 
@@ -210,7 +259,7 @@ export default function App() {
           />
         );
       case 'verifikasi':
-        return <VerifyLetter settings={settings} />;
+        return <VerifyLetter settings={settings} initialCode={initialVerifyCode} />;
       case 'informasi':
         return <InformasiPage settings={settings} onOpenSubmitModal={handleOpenSubmitModal} />;
       case 'kontak':

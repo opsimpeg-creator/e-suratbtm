@@ -6,27 +6,55 @@ import { ShieldCheck, Search, CheckCircle2, AlertTriangle, FileText, Download, L
 
 interface VerifyLetterProps {
   settings: SchoolSettings;
+  initialCode?: string;
 }
 
-export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings }) => {
-  const [queryCode, setQueryCode] = useState('');
+export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCode }) => {
+  const [queryCode, setQueryCode] = useState(initialCode || '');
   const [verifiedRequest, setVerifiedRequest] = useState<SubmissionRequest | null>(null);
   const [searched, setSearched] = useState(false);
   const [previewModalFile, setPreviewModalFile] = useState<{ fileName: string; fileUrl: string; fileSize?: string } | null>(null);
 
   useEffect(() => {
-    // Check URL query string
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    if (code) {
-      setQueryCode(code);
-      handleVerify(code);
+    let codeToVerify = (initialCode || '').trim();
+    if (!codeToVerify) {
+      // Check URL query string
+      const urlParams = new URLSearchParams(window.location.search);
+      codeToVerify = (
+        urlParams.get('verify') ||
+        urlParams.get('code') ||
+        urlParams.get('qr') ||
+        urlParams.get('v') ||
+        urlParams.get('verif') ||
+        ''
+      ).trim();
     }
-  }, []);
+
+    if (codeToVerify) {
+      setQueryCode(codeToVerify);
+      handleVerify(codeToVerify);
+    }
+  }, [initialCode]);
 
   const handleVerify = (code: string) => {
-    const c = code.trim();
+    let c = (code || '').trim();
     if (!c) return;
+
+    // Handle full URL pasted or passed
+    if (c.includes('http://') || c.includes('https://') || c.includes('?')) {
+      try {
+        const urlStr = c.startsWith('http') ? c : `https://dummy.app/${c}`;
+        const parsed = new URL(urlStr);
+        const extracted = parsed.searchParams.get('verify') ||
+                          parsed.searchParams.get('code') ||
+                          parsed.searchParams.get('qr') ||
+                          parsed.searchParams.get('v') ||
+                          parsed.searchParams.get('verif');
+        if (extracted) c = extracted.trim();
+      } catch {
+        // keep c
+      }
+    }
 
     setSearched(true);
     const found = StorageService.getSubmissionByQr(c) || StorageService.getSubmissionByNumber(c);
