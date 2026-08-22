@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LetterType, FormField, FieldType } from '../../types';
 import { StorageService } from '../../services/storage';
+import { AppsScriptService } from '../../services/appsScript';
 import {
   Sliders,
   Plus,
@@ -20,7 +21,8 @@ import {
   CheckCircle2,
   Sparkles,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Database
 } from 'lucide-react';
 
 interface FormBuilderProps {
@@ -218,6 +220,8 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
     }
   };
 
+  const [isSyncingMaster, setIsSyncingMaster] = useState(false);
+
   const fillMasterClasses = () => {
     const currentSettings = StorageService.getSettings();
     if (currentSettings.classes && currentSettings.classes.length > 0) {
@@ -235,6 +239,25 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
       if (!label) setLabel('Konsentrasi Keahlian / Jurusan');
       if (!name) setName('jurusan');
       setFieldType('dropdown');
+    }
+  };
+
+  const handleFetchMasterFromSpreadsheet = async () => {
+    setIsSyncingMaster(true);
+    try {
+      const res = await AppsScriptService.fetchMasterDataFromSpreadsheet();
+      if (res.success) {
+        setSaveSuccessNotice(`✅ ${res.message}`);
+        onRefresh();
+      } else {
+        setSaveSuccessNotice(`ℹ️ ${res.message}`);
+      }
+      setTimeout(() => setSaveSuccessNotice(null), 4500);
+    } catch (e: any) {
+      setSaveSuccessNotice(`⚠️ Gagal memuat dari Spreadsheet: ${e?.message || 'Error'}`);
+      setTimeout(() => setSaveSuccessNotice(null), 4000);
+    } finally {
+      setIsSyncingMaster(false);
     }
   };
 
@@ -366,9 +389,19 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
+                        onClick={handleFetchMasterFromSpreadsheet}
+                        disabled={isSyncingMaster}
+                        className="text-[11px] bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold px-2.5 py-1 rounded-lg border border-emerald-200 transition flex items-center gap-1"
+                        title="Tarik data terbaru dari Sheet MasterKelas & MasterJurusan"
+                      >
+                        {isSyncingMaster ? <Loader2 className="w-3 h-3 animate-spin text-emerald-600" /> : <Database className="w-3 h-3 text-emerald-600" />}
+                        Tarik dari Spreadsheet
+                      </button>
+                      <button
+                        type="button"
                         onClick={fillMasterClasses}
                         className="text-[11px] bg-blue-50 text-blue-800 hover:bg-blue-100 font-bold px-2.5 py-1 rounded-lg border border-blue-200 transition flex items-center gap-1"
-                        title="Salin daftar kelas dari Setting Sekolah"
+                        title="Salin daftar kelas dari Master Data Spreadsheet"
                       >
                         <Sparkles className="w-3 h-3 text-blue-600" />
                         Gunakan Master Kelas
@@ -377,7 +410,7 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
                         type="button"
                         onClick={fillMasterMajors}
                         className="text-[11px] bg-indigo-50 text-indigo-800 hover:bg-indigo-100 font-bold px-2.5 py-1 rounded-lg border border-indigo-200 transition flex items-center gap-1"
-                        title="Salin daftar jurusan dari Setting Sekolah"
+                        title="Salin daftar jurusan dari Master Data Spreadsheet"
                       >
                         <Sparkles className="w-3 h-3 text-indigo-600" />
                         Gunakan Master Jurusan
@@ -392,9 +425,15 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
                     className="w-full px-3.5 py-2.5 rounded-xl border border-blue-300 bg-blue-50/50 text-xs font-mono leading-relaxed"
                     required
                   />
-                  <p className="text-[11px] text-slate-400">
-                    💡 Tips: Masukkan setiap pilihan dipisahkan tanda koma <code>,</code>. Contoh: <code>Opsi 1, Opsi 2, Opsi 3</code>
-                  </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 gap-1">
+                    <p>
+                      💡 Masukkan setiap pilihan dipisahkan koma <code>,</code>.
+                    </p>
+                    <p className="text-emerald-700 font-medium flex items-center gap-1">
+                      <Database className="w-3 h-3" />
+                      <span>Form Publik otomatis terhubung ke Sheet MasterKelas / MasterJurusan</span>
+                    </p>
+                  </div>
                 </div>
               )}
 

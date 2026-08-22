@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { SchoolSettings } from '../../types';
 import { AppsScriptService } from '../../services/appsScript';
 import { StorageService } from '../../services/storage';
-import { Database, ExternalLink, Copy, Check, RefreshCw, Code, Sparkles, ShieldCheck } from 'lucide-react';
+import { Database, ExternalLink, Copy, Check, RefreshCw, Code, Sparkles, ShieldCheck, GraduationCap, BookOpen, Layers, CheckCircle2, ArrowRight } from 'lucide-react';
 
 interface SpreadsheetSyncPageProps {
   settings: SchoolSettings;
@@ -56,6 +56,39 @@ export const SpreadsheetSyncPage: React.FC<SpreadsheetSyncPageProps> = ({ settin
     setTimeout(() => setSyncMessage(''), 5000);
   };
 
+  const handlePullMasterOnly = async () => {
+    setSyncing(true);
+    setSyncMessage('');
+    try {
+      const res = await AppsScriptService.fetchMasterDataFromSpreadsheet();
+      setSyncMessage(res.message);
+      if (res.success) {
+        onRefresh();
+      }
+      StorageService.addAuditLog('admin', 'FETCH_MASTER_SPREADSHEET', res.message);
+    } catch (e: any) {
+      setSyncMessage('Gagal menarik Master Data: ' + (e?.message || 'Error'));
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMessage(''), 5000);
+    }
+  };
+
+  const handlePushMasterOnly = async () => {
+    setSyncing(true);
+    setSyncMessage('');
+    try {
+      const res = await AppsScriptService.syncMasterDataToSpreadsheet();
+      setSyncMessage(res.message);
+      StorageService.addAuditLog('admin', 'PUSH_MASTER_SPREADSHEET', res.message);
+    } catch (e: any) {
+      setSyncMessage('Gagal mengirim Master Data: ' + (e?.message || 'Error'));
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMessage(''), 5000);
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Header Info Banner */}
@@ -65,10 +98,39 @@ export const SpreadsheetSyncPage: React.FC<SpreadsheetSyncPageProps> = ({ settin
           <h2 className="text-2xl font-extrabold text-white">Integrasi Direct Google Spreadsheet Database</h2>
         </div>
         <p className="text-xs sm:text-sm text-emerald-100 max-w-2xl leading-relaxed">
-          Aplikasi ini dirancang <b>Spreadsheet-First</b>. Seluruh data permohonan, jenis surat, dan log disimpan dalam spreadsheet target ID yang Anda tetapkan.
+          Aplikasi ini dirancang <b>Spreadsheet-First</b>. Seluruh data permohonan, pengaduan, template surat, serta <b>Master Referensi Kelas & Jurusan</b> tersinkronisasi langsung dengan Google Spreadsheet.
         </p>
 
-        <div className="pt-2 flex flex-wrap items-center gap-4 text-xs font-bold">
+        {/* Master Data Snapshot Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/15 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-300 flex items-center justify-center font-bold">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[11px] text-emerald-200 uppercase font-bold tracking-wider">Sheet: MasterKelas</p>
+                <p className="text-sm font-extrabold text-white">{settings.classes?.length || 0} Kelas Terdaftar</p>
+              </div>
+            </div>
+            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-400/30">Auto Dropdown</span>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/15 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center font-bold">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[11px] text-emerald-200 uppercase font-bold tracking-wider">Sheet: MasterJurusan</p>
+                <p className="text-sm font-extrabold text-white">{settings.majors?.length || 0} Jurusan / Konsentrasi</p>
+              </div>
+            </div>
+            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-400/30">Auto Dropdown</span>
+          </div>
+        </div>
+
+        <div className="pt-2 flex flex-wrap items-center gap-3 text-xs font-bold">
           <a
             href={`https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}`}
             target="_blank"
@@ -80,13 +142,33 @@ export const SpreadsheetSyncPage: React.FC<SpreadsheetSyncPageProps> = ({ settin
           </a>
 
           <button
+            onClick={handlePullMasterOnly}
+            disabled={syncing}
+            className="bg-teal-700 hover:bg-teal-600 text-white border border-teal-500 px-4 py-2.5 rounded-xl transition flex items-center gap-2 shadow-md"
+            title="Tarik hanya Master Data Kelas & Jurusan dari Spreadsheet"
+          >
+            <RefreshCw className={`w-4 h-4 text-teal-200 ${syncing ? 'animate-spin' : ''}`} />
+            <span>Tarik Master Kelas/Jurusan</span>
+          </button>
+
+          <button
+            onClick={handlePushMasterOnly}
+            disabled={syncing}
+            className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-2.5 rounded-xl transition flex items-center gap-2"
+            title="Kirim Master Kelas & Jurusan lokal ke Spreadsheet"
+          >
+            <Layers className="w-4 h-4 text-amber-300" />
+            <span>Kirim Master ke Spreadsheet</span>
+          </button>
+
+          <button
             onClick={handlePullData}
             disabled={syncing}
             className="bg-blue-600 hover:bg-blue-500 text-white border border-blue-400 px-4 py-2.5 rounded-xl transition flex items-center gap-2 shadow-md"
-            title="Tarik data terbaru dari Google Spreadsheet ke aplikasi"
+            title="Tarik seluruh permohonan & pengaduan dari Google Spreadsheet"
           >
             <RefreshCw className={`w-4 h-4 text-blue-200 ${syncing ? 'animate-spin' : ''}`} />
-            <span>{syncing ? 'Menarik Data...' : 'Tarik Data dari Spreadsheet'}</span>
+            <span>{syncing ? 'Menarik...' : 'Tarik Semua Data'}</span>
           </button>
 
           <button
@@ -95,7 +177,7 @@ export const SpreadsheetSyncPage: React.FC<SpreadsheetSyncPageProps> = ({ settin
             className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-2.5 rounded-xl transition flex items-center gap-2"
           >
             <RefreshCw className={`w-4 h-4 text-amber-300 ${syncing ? 'animate-spin' : ''}`} />
-            <span>{syncing ? 'Kirim Ke Spreadsheet...' : 'Kirim Data Lokal ke Spreadsheet'}</span>
+            <span>{syncing ? 'Mengirim...' : 'Kirim Semua ke Spreadsheet'}</span>
           </button>
         </div>
 
@@ -137,7 +219,7 @@ export const SpreadsheetSyncPage: React.FC<SpreadsheetSyncPageProps> = ({ settin
             <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Backend Code Generator</span>
             <h3 className="text-lg font-extrabold text-slate-900">Kode Generator Code.gs Google Apps Script</h3>
             <p className="text-xs text-slate-500">
-              Kode ini otomatis mengkonfigurasi 6 sheet header, CRUD REST API endpoints, serta penomoran otomatis.
+              Kode ini otomatis mengkonfigurasi 12 sheet database (termasuk <b>MasterKelas</b> & <b>MasterJurusan</b>), REST API endpoints, dan penomoran otomatis.
             </p>
           </div>
 
@@ -154,14 +236,14 @@ export const SpreadsheetSyncPage: React.FC<SpreadsheetSyncPageProps> = ({ settin
         <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 space-y-2">
           <h4 className="font-bold flex items-center gap-1.5 text-amber-950">
             <Sparkles className="w-4 h-4 text-amber-600" />
-            <span>Langkah Pemasangan di Google Apps Script:</span>
+            <span>Langkah Pemasangan / Pembaruan di Google Apps Script:</span>
           </h4>
           <ol className="list-decimal list-inside space-y-1 font-medium leading-relaxed">
             <li>Buka Spreadsheet target ID: <b className="font-mono">{settings.spreadsheetId}</b>.</li>
             <li>Klik menu <b>Ekstensi (Extensions)</b> → <b>Apps Script</b>.</li>
-            <li>Hapus seluruh kode bawaan di `Code.gs`, lalu <b>Paste</b> kode dari tombol di atas.</li>
-            <li>Jalankan fungsi <b className="font-mono text-blue-900">bootstrapSheets()</b> sekali untuk membuat semua Sheet otomatis.</li>
-            <li>Klik tombol <b>Deploy</b> → <b>Web app baru</b> (Execute as: <i>Me</i>, Who has access: <i>Anyone</i>).</li>
+            <li>Hapus seluruh kode lama di `Code.gs`, lalu <b>Paste</b> kode dari tombol di atas.</li>
+            <li>Pilih fungsi <b className="font-mono text-blue-900">bootstrapSheets</b> lalu klik <b>Run (Jalankan)</b> untuk otomatis membuat sheet `MasterKelas` dan `MasterJurusan`.</li>
+            <li>Klik <b>Deploy</b> → <b>Kelola Deployment (Manage Deployments)</b> → Klik ikon Pensil (Edit) → Pilih <b>New version</b> → Klik <b>Deploy</b>.</li>
           </ol>
         </div>
 

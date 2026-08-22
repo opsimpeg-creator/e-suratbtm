@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { LetterType, FormField, SubmissionRequest, SchoolSettings } from '../../types';
 import { StorageService } from '../../services/storage';
-import { X, Send, AlertCircle, FileText, CheckCircle2, Upload, Lock, ShieldAlert } from 'lucide-react';
+import { AppsScriptService } from '../../services/appsScript';
+import { X, Send, AlertCircle, FileText, CheckCircle2, Upload, Lock, ShieldAlert, Sparkles, Database } from 'lucide-react';
 
 interface SubmitRequestModalProps {
   selectedType: LetterType | null;
@@ -12,12 +13,13 @@ interface SubmitRequestModalProps {
 
 export const SubmitRequestModal: React.FC<SubmitRequestModalProps> = ({
   selectedType,
-  settings,
+  settings: initialSettings,
   onClose,
   onSuccess,
 }) => {
   if (!selectedType) return null;
 
+  const [currentSettings, setCurrentSettings] = useState<SchoolSettings>(initialSettings);
   const fields = StorageService.getFieldsForLetterType(selectedType.id);
 
   // Form State
@@ -35,6 +37,28 @@ export const SubmitRequestModal: React.FC<SubmitRequestModalProps> = ({
   const [captchaError, setCaptchaError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isSyncingMaster, setIsSyncingMaster] = useState(false);
+
+  // Fetch freshest Master Kelas & Jurusan from Spreadsheet on mount
+  useEffect(() => {
+    const fresh = StorageService.getSettings();
+    setCurrentSettings(fresh);
+
+    // Background fetch from Spreadsheet
+    setIsSyncingMaster(true);
+    AppsScriptService.fetchMasterDataFromSpreadsheet(true)
+      .then((res) => {
+        if (res.success) {
+          setCurrentSettings(StorageService.getSettings());
+        }
+      })
+      .catch((err) => {
+        console.warn('Master data background fetch notice:', err);
+      })
+      .finally(() => {
+        setIsSyncingMaster(false);
+      });
+  }, []);
 
   // Generate random captcha on open
   useEffect(() => {
@@ -59,6 +83,42 @@ export const SubmitRequestModal: React.FC<SubmitRequestModalProps> = ({
       }
     }
   }, [selectedType]);
+
+  // Helper to dynamically resolve options from Google Spreadsheet Master
+  const resolveFieldOptions = (field: FormField): { options: string[]; isFromMaster: boolean; masterType?: string } => {
+    const nameLower = (field.name || '').toLowerCase();
+    const labelLower = (field.label || '').toLowerCase();
+
+    const isClassField =
+      nameLower.includes('kelas') ||
+      nameLower.includes('class') ||
+      nameLower.includes('rombel') ||
+      nameLower.includes('tingkat') ||
+      labelLower.includes('kelas') ||
+      labelLower.includes('rombel') ||
+      labelLower.includes('tingkat');
+
+    const isMajorField =
+      nameLower.includes('jurusan') ||
+      nameLower.includes('major') ||
+      nameLower.includes('keahlian') ||
+      nameLower.includes('konsentrasi') ||
+      nameLower.includes('prodi') ||
+      labelLower.includes('jurusan') ||
+      labelLower.includes('keahlian') ||
+      labelLower.includes('konsentrasi') ||
+      labelLower.includes('program keahlian');
+
+    if (isClassField && currentSettings.classes && currentSettings.classes.length > 0) {
+      return { options: currentSettings.classes, isFromMaster: true, masterType: 'Master Kelas Spreadsheet' };
+    }
+
+    if (isMajorField && currentSettings.majors && currentSettings.majors.length > 0) {
+      return { options: currentSettings.majors, isFromMaster: true, masterType: 'Master Jurusan Spreadsheet' };
+    }
+
+    return { options: field.options || [], isFromMaster: false };
+  };
 
   // Handle Field Changes
   const handleInputChange = (fieldName: string, value: any) => {
@@ -243,13 +303,21 @@ export const SubmitRequestModal: React.FC<SubmitRequestModalProps> = ({
                 {fields.map((field) => {
                   if (field.hidden) return null;
                   const value = formData[field.name] || field.defaultValue || '';
-                  const options = field.options && field.options.length > 0 ? field.options : [];
+                  const { options, isFromMaster, masterType } = resolveFieldOptions(field);
 
                   return (
                     <div key={field.id} className={field.type === 'textarea' || field.type.startsWith('file_') ? 'sm:col-span-2' : ''}>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        {field.label} {field.required && <span className="text-rose-600">*</span>}
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700">
+                          {field.label} {field.required && <span className="text-rose-600">*</span>}
+                        </label>
+                        {isFromMaster && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md font-medium" title={masterType}>
+                            <Database className="w-3 h-3 text-emerald-600" />
+                            <span>Spreadsheet</span>
+                          </span>
+                        )}
+                      </div>
 
                       {/* TEXT / NUMBER / EMAIL / PHONE / DATE */}
                       {['text', 'number', 'email', 'phone', 'date'].includes(field.type) && (

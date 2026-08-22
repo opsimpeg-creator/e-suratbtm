@@ -50,11 +50,108 @@ function handleRoute(action, params) {
       pengaduan: getSheetDataAsJson(ss, 'Pengaduan'),
       jenisSurat: getSheetDataAsJson(ss, 'JenisSurat'),
       fieldSurat: getSheetDataAsJson(ss, 'FieldSurat'),
+      masterKelas: getSheetDataAsJson(ss, 'MasterKelas'),
+      masterJurusan: getSheetDataAsJson(ss, 'MasterJurusan'),
       setting: getSheetDataAsJson(ss, 'Setting'),
       log: getSheetDataAsJson(ss, 'Log'),
       nomorSurat: getSheetDataAsJson(ss, 'NomorSurat'),
       pengguna: getSheetDataAsJson(ss, 'Pengguna')
     };
+  }
+
+  if (action === 'getMasterData' || action === 'getMasterKelasJurusan') {
+    return {
+      success: true,
+      masterKelas: getSheetDataAsJson(ss, 'MasterKelas'),
+      masterJurusan: getSheetDataAsJson(ss, 'MasterJurusan')
+    };
+  }
+
+  if (action === 'saveAllMasterKelas') {
+    const sheet = ss.getSheetByName('MasterKelas');
+    if (!sheet) return { success: false, message: "Sheet MasterKelas tidak ditemukan" };
+    const items = params.items || params.classes || [];
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, 5).clearContent();
+    }
+    for (var k = 0; k < items.length; k++) {
+      var item = items[k];
+      var namaKelas = typeof item === 'string' ? item : (item.NamaKelas || item.nama || item.name || '');
+      var tingkat = typeof item === 'object' ? (item.Tingkat || item.tingkat || '') : (namaKelas.startsWith('XII') ? 'XII' : (namaKelas.startsWith('XI') ? 'XI' : (namaKelas.startsWith('X') ? 'X' : '')));
+      sheet.appendRow([
+        'cls-' + (k + 1),
+        namaKelas,
+        tingkat,
+        'Ya',
+        k + 1
+      ]);
+    }
+    logActivity(ss, 'Admin', 'SYNC_MASTER_KELAS', 'Sinkronisasi ' + items.length + ' kelas');
+    return { success: true, count: items.length };
+  }
+
+  if (action === 'saveAllMasterJurusan') {
+    const sheet = ss.getSheetByName('MasterJurusan');
+    if (!sheet) return { success: false, message: "Sheet MasterJurusan tidak ditemukan" };
+    const items = params.items || params.majors || [];
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, 5).clearContent();
+    }
+    for (var m = 0; m < items.length; m++) {
+      var itm = items[m];
+      var namaJurusan = typeof itm === 'string' ? itm : (itm.NamaJurusan || itm.nama || itm.name || '');
+      var kodeJurusan = typeof itm === 'object' ? (itm.KodeJurusan || itm.kode || '') : '';
+      if (!kodeJurusan && namaJurusan.includes('(') && namaJurusan.includes(')')) {
+        kodeJurusan = namaJurusan.substring(namaJurusan.indexOf('(') + 1, namaJurusan.indexOf(')'));
+      }
+      sheet.appendRow([
+        'mjr-' + (m + 1),
+        kodeJurusan || ('JUR-' + (m + 1)),
+        namaJurusan,
+        'Ya',
+        m + 1
+      ]);
+    }
+    logActivity(ss, 'Admin', 'SYNC_MASTER_JURUSAN', 'Sinkronisasi ' + items.length + ' jurusan');
+    return { success: true, count: items.length };
+  }
+
+  if (action === 'syncAllMasterData') {
+    var countCls = 0;
+    var countMjr = 0;
+    if (params.classes && Array.isArray(params.classes)) {
+      var sheetCls = ss.getSheetByName('MasterKelas');
+      if (sheetCls) {
+        var lastCls = sheetCls.getLastRow();
+        if (lastCls > 1) sheetCls.getRange(2, 1, lastCls - 1, 5).clearContent();
+        for (var c = 0; c < params.classes.length; c++) {
+          var cName = String(params.classes[c]);
+          var cTingkat = cName.startsWith('XII') ? 'XII' : (cName.startsWith('XI') ? 'XI' : (cName.startsWith('X') ? 'X' : ''));
+          sheetCls.appendRow(['cls-' + (c + 1), cName, cTingkat, 'Ya', c + 1]);
+        }
+        countCls = params.classes.length;
+      }
+    }
+    if (params.majors && Array.isArray(params.majors)) {
+      var sheetMjr = ss.getSheetByName('MasterJurusan');
+      if (sheetMjr) {
+        var lastMjr = sheetMjr.getLastRow();
+        if (lastMjr > 1) sheetMjr.getRange(2, 1, lastMjr - 1, 5).clearContent();
+        for (var j = 0; j < params.majors.length; j++) {
+          var jName = String(params.majors[j]);
+          var jKode = '';
+          if (jName.includes('(') && jName.includes(')')) {
+            jKode = jName.substring(jName.indexOf('(') + 1, jName.indexOf(')'));
+          }
+          sheetMjr.appendRow(['mjr-' + (j + 1), jKode || ('JUR-' + (j + 1)), jName, 'Ya', j + 1]);
+        }
+        countMjr = params.majors.length;
+      }
+    }
+    logActivity(ss, 'Admin', 'SYNC_MASTER_DATA', 'Sinkronisasi ' + countCls + ' kelas & ' + countMjr + ' jurusan');
+    return { success: true, countClasses: countCls, countMajors: countMjr };
   }
 
   if (action === 'saveNomorSurat') {
@@ -453,6 +550,8 @@ function bootstrapSheets(ss) {
     { name: 'Pengguna', headers: ['ID', 'Username', 'Password', 'Nama', 'Role', 'Email', 'CreatedAt'] },
     { name: 'Permohonan', headers: ['ID', 'NoPermohonan', 'NamaPemohon', 'Email', 'HP', 'JenisSurat', 'Status', 'FormData', 'Tanggal', 'NoSuratResmi'] },
     { name: 'Pengaduan', headers: ['ID', 'NoTiket', 'NamaPengirim', 'Kontak', 'Kategori', 'IsiPesan', 'Status', 'TanggapanAdmin', 'TanggalMasuk', 'TanggalDitanggapi', 'DitanggapiOleh'] },
+    { name: 'MasterKelas', headers: ['ID', 'NamaKelas', 'Tingkat', 'StatusAktif', 'Urutan'] },
+    { name: 'MasterJurusan', headers: ['ID', 'KodeJurusan', 'NamaJurusan', 'StatusAktif', 'Urutan'] },
     { name: 'JenisSurat', headers: ['ID', 'Kode', 'NamaSurat', 'Deskripsi', 'LamaProsesHari', 'StatusAktif', 'Urutan'] },
     { name: 'FieldSurat', headers: ['ID', 'JenisSuratID', 'Label', 'Name', 'Type', 'Required', 'Urutan'] },
     { name: 'Setting', headers: ['Key', 'Value'] },
@@ -468,6 +567,35 @@ function bootstrapSheets(ss) {
       sheet = ss.insertSheet(req.name);
       sheet.appendRow(req.headers);
       sheet.getRange(1, 1, 1, req.headers.length).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+
+      // Auto populate initial default data for master classes if newly created
+      if (req.name === 'MasterKelas') {
+        var defaultClasses = [
+          'X TJKT 1', 'X TJKT 2', 'X TBSM 1', 'X TBSM 2', 'X AKL 1', 'X AKL 2',
+          'XI TJKT 1', 'XI TJKT 2', 'XI TBSM 1', 'XI TBSM 2', 'XI AKL 1', 'XI AKL 2',
+          'XII TJKT 1', 'XII TJKT 2', 'XII TBSM 1', 'XII TBSM 2', 'XII AKL 1', 'XII AKL 2'
+        ];
+        for (var c = 0; c < defaultClasses.length; c++) {
+          var cName = defaultClasses[c];
+          var cLevel = cName.startsWith('XII') ? 'XII' : (cName.startsWith('XI') ? 'XI' : 'X');
+          sheet.appendRow(['cls-' + (c + 1), cName, cLevel, 'Ya', c + 1]);
+        }
+      }
+
+      // Auto populate initial default data for master majors if newly created
+      if (req.name === 'MasterJurusan') {
+        var defaultMajors = [
+          { code: 'TJKT', name: 'Teknik Jaringan Komputer dan Telekomunikasi (TJKT)' },
+          { code: 'TBSM', name: 'Teknik Bisnis Sepeda Motor (TBSM)' },
+          { code: 'AKL', name: 'Akuntansi dan Keuangan Lembaga (AKL)' },
+          { code: 'DKV', name: 'Desain Komunikasi Visual (DKV)' },
+          { code: 'DPIB', name: 'Desain Pemodelan dan Informasi Bangunan (DPIB)' },
+          { code: 'TAB', name: 'Teknik Alat Berat (TAB)' }
+        ];
+        for (var m = 0; m < defaultMajors.length; m++) {
+          sheet.appendRow(['mjr-' + (m + 1), defaultMajors[m].code, defaultMajors[m].name, 'Ya', m + 1]);
+        }
+      }
     }
   });
 }
@@ -845,6 +973,28 @@ function logActivity(ss, user, action, details) {
       // Parse Complaints / Pengaduan
       let rawComplaintsList: any[] = data.pengaduan || data.complaints || [];
 
+      // Parse Master Kelas & Master Jurusan from Spreadsheet
+      if (Array.isArray(data.masterKelas) && data.masterKelas.length > 0) {
+        const clsList = data.masterKelas
+          .filter((c: any) => String(c.StatusAktif || c.status || 'Ya').toLowerCase() !== 'tidak')
+          .map((c: any) => String(c.NamaKelas || c.nama || c.name || '').trim())
+          .filter(Boolean);
+        if (clsList.length > 0) {
+          settings.classes = clsList;
+        }
+      }
+
+      if (Array.isArray(data.masterJurusan) && data.masterJurusan.length > 0) {
+        const mjrList = data.masterJurusan
+          .filter((m: any) => String(m.StatusAktif || m.status || 'Ya').toLowerCase() !== 'tidak')
+          .map((m: any) => String(m.NamaJurusan || m.nama || m.name || '').trim())
+          .filter(Boolean);
+        if (mjrList.length > 0) {
+          settings.majors = mjrList;
+        }
+      }
+      StorageService.saveSettings(settings);
+
       // If pengaduanList is empty in getAllData, query ?action=getAllComplaints as fallback
       if (!rawComplaintsList || rawComplaintsList.length === 0) {
         try {
@@ -976,6 +1126,173 @@ function logActivity(ss, user, action, details) {
     } catch (e) {
       console.warn('Apps Script Complaint Sync notice:', e);
       return false;
+    }
+  },
+
+  fetchMasterDataFromSpreadsheet: async function (forceSilent = false): Promise<{
+    success: boolean;
+    classes: string[];
+    majors: string[];
+    message: string;
+  }> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    let fetchedClasses: string[] = [];
+    let fetchedMajors: string[] = [];
+    let source = '';
+
+    // 1. Try via Web App URL
+    if (url) {
+      try {
+        const resp = await fetch(`${url}?action=getMasterData`);
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.success) {
+            if (Array.isArray(json.masterKelas) && json.masterKelas.length > 0) {
+              fetchedClasses = json.masterKelas
+                .filter((c: any) => String(c.StatusAktif || c.status || 'Ya').toLowerCase() !== 'tidak')
+                .map((c: any) => String(c.NamaKelas || c.nama || c.name || '').trim())
+                .filter(Boolean);
+            }
+            if (Array.isArray(json.masterJurusan) && json.masterJurusan.length > 0) {
+              fetchedMajors = json.masterJurusan
+                .filter((m: any) => String(m.StatusAktif || m.status || 'Ya').toLowerCase() !== 'tidak')
+                .map((m: any) => String(m.NamaJurusan || m.nama || m.name || '').trim())
+                .filter(Boolean);
+            }
+            if (fetchedClasses.length > 0 || fetchedMajors.length > 0) {
+              source = 'Web App API';
+            }
+          }
+        }
+      } catch (e) {
+        // Continue to GViz fallback
+      }
+    }
+
+    // 2. Fallback via Google Visualization (GViz) API directly to MasterKelas and MasterJurusan sheets
+    if ((fetchedClasses.length === 0 || fetchedMajors.length === 0) && settings.spreadsheetId) {
+      try {
+        if (fetchedClasses.length === 0) {
+          const gvizClsUrl = `https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}/gviz/tq?tqx=out:json&sheet=MasterKelas`;
+          const respCls = await fetch(gvizClsUrl);
+          if (respCls.ok) {
+            const txt = await respCls.text();
+            const jsonTxt = txt.substring(txt.indexOf('{'), txt.lastIndexOf('}') + 1);
+            const gvizCls = JSON.parse(jsonTxt);
+            if (gvizCls?.table?.rows) {
+              fetchedClasses = gvizCls.table.rows
+                .map((r: any) => {
+                  const c = r.c || [];
+                  const name = c[1]?.v;
+                  const active = c[3]?.v;
+                  if (active && String(active).toLowerCase() === 'tidak') return null;
+                  return name ? String(name).trim() : null;
+                })
+                .filter(Boolean) as string[];
+              if (fetchedClasses.length > 0) source = 'Google Spreadsheet (GViz)';
+            }
+          }
+        }
+
+        if (fetchedMajors.length === 0) {
+          const gvizMjrUrl = `https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}/gviz/tq?tqx=out:json&sheet=MasterJurusan`;
+          const respMjr = await fetch(gvizMjrUrl);
+          if (respMjr.ok) {
+            const txt = await respMjr.text();
+            const jsonTxt = txt.substring(txt.indexOf('{'), txt.lastIndexOf('}') + 1);
+            const gvizMjr = JSON.parse(jsonTxt);
+            if (gvizMjr?.table?.rows) {
+              fetchedMajors = gvizMjr.table.rows
+                .map((r: any) => {
+                  const c = r.c || [];
+                  const name = c[2]?.v || c[1]?.v;
+                  const active = c[3]?.v;
+                  if (active && String(active).toLowerCase() === 'tidak') return null;
+                  return name ? String(name).trim() : null;
+                })
+                .filter(Boolean) as string[];
+              if (fetchedMajors.length > 0) source = 'Google Spreadsheet (GViz)';
+            }
+          }
+        }
+      } catch (e) {
+        // ignore fallback errors
+      }
+    }
+
+    if (fetchedClasses.length > 0 || fetchedMajors.length > 0) {
+      const currentSettings = StorageService.getSettings();
+      let updated = false;
+
+      if (fetchedClasses.length > 0) {
+        currentSettings.classes = fetchedClasses;
+        updated = true;
+      }
+      if (fetchedMajors.length > 0) {
+        currentSettings.majors = fetchedMajors;
+        updated = true;
+      }
+
+      if (updated) {
+        StorageService.saveSettings(currentSettings);
+      }
+
+      return {
+        success: true,
+        classes: fetchedClasses.length > 0 ? fetchedClasses : (settings.classes || []),
+        majors: fetchedMajors.length > 0 ? fetchedMajors : (settings.majors || []),
+        message: `Berhasil memuat ${fetchedClasses.length} data kelas & ${fetchedMajors.length} data jurusan dari ${source}!`,
+      };
+    }
+
+    return {
+      success: false,
+      classes: settings.classes || [],
+      majors: settings.majors || [],
+      message: 'Belum dapat menghubungkan data dari Spreadsheet Master. Menggunakan data acuan saat ini.',
+    };
+  },
+
+  syncMasterDataToSpreadsheet: async function (
+    classes?: string[],
+    majors?: string[]
+  ): Promise<{ success: boolean; message: string }> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    const targetClasses = classes || settings.classes || [];
+    const targetMajors = majors || settings.majors || [];
+
+    if (!url) {
+      return {
+        success: false,
+        message: 'URL Web App Google Apps Script belum dikonfigurasi. Masukkan URL Web App pada menu Sync Spreadsheet.',
+      };
+    }
+
+    try {
+      const payload = {
+        action: 'syncAllMasterData',
+        classes: targetClasses,
+        majors: targetMajors,
+      };
+
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+        mode: 'no-cors',
+      });
+
+      return {
+        success: true,
+        message: `Berhasil mengirim ${targetClasses.length} data Master Kelas & ${targetMajors.length} Master Jurusan ke Google Spreadsheet!`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: 'Gagal mengirim master data ke Spreadsheet: ' + (err.message || 'Koneksi terputus'),
+      };
     }
   },
 
