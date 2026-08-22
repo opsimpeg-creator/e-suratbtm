@@ -243,7 +243,19 @@ export const SubmitRequestModal: React.FC<SubmitRequestModalProps> = ({
                 {fields.map((field) => {
                   if (field.hidden) return null;
                   const value = formData[field.name] || field.defaultValue || '';
-                  const options = field.options || [];
+                  const rawOptions = field.options && field.options.length > 0 ? field.options : [];
+                  let options = rawOptions;
+                  if (options.length === 0) {
+                    if (field.name === 'kelas' || field.label.toLowerCase().includes('kelas')) {
+                      options = settings.classes || [];
+                    } else if (
+                      field.name === 'jurusan' ||
+                      field.label.toLowerCase().includes('jurusan') ||
+                      field.label.toLowerCase().includes('keahlian')
+                    ) {
+                      options = settings.majors || [];
+                    }
+                  }
 
                   return (
                     <div key={field.id} className={field.type === 'textarea' || field.type.startsWith('file_') ? 'sm:col-span-2' : ''}>

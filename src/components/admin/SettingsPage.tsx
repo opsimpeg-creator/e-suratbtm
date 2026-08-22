@@ -154,7 +154,61 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onRefresh 
           </div>
         </div>
 
-        {/* Section 2: Official Signatories */}
+        {/* Section 2: Master Data Kelas & Jurusan */}
+        <div className="space-y-4 pt-4 border-t border-slate-200">
+          <h3 className="font-extrabold text-slate-900 text-sm border-b border-slate-200 pb-2">
+            Master Pilihan Kelas & Konsentrasi Keahlian / Jurusan
+          </h3>
+          <p className="text-slate-500 text-[11px]">
+            Daftar opsi ini digunakan sebagai data acuan utama untuk pilihan dropdown formulir pengajuan surat siswa dan alumni. Pisahkan setiap pilihan dengan tanda koma <code>,</code>.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Daftar Master Tingkat & Rombel Kelas (Pisahkan tanda koma)
+              </label>
+              <textarea
+                rows={4}
+                value={(formData.classes || []).join(', ')}
+                onChange={(e) =>
+                  handleChange(
+                    'classes',
+                    e.target.value.split(',').map((c) => c.trim()).filter(Boolean)
+                  )
+                }
+                placeholder="X (Sepuluh), X-A (Sepuluh A), X-B (Sepuluh B), XI (Sebelas)..."
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs leading-relaxed"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Jumlah terdaftar: <strong>{(formData.classes || []).length} kelas</strong>
+              </p>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Daftar Master Konsentrasi Keahlian / Jurusan (Pisahkan tanda koma)
+              </label>
+              <textarea
+                rows={4}
+                value={(formData.majors || []).join(', ')}
+                onChange={(e) =>
+                  handleChange(
+                    'majors',
+                    e.target.value.split(',').map((m) => m.trim()).filter(Boolean)
+                  )
+                }
+                placeholder="Teknik Jaringan Komputer dan Telekomunikasi (TJKT), Broadcasting dan Perfilman (BP), AKL, DKV, DPIB, TAB..."
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs leading-relaxed"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Jumlah terdaftar: <strong>{(formData.majors || []).length} jurusan</strong>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: Official Signatories */}
         <div className="space-y-4 pt-4 border-t border-slate-200">
           <h3 className="font-extrabold text-slate-900 text-sm border-b border-slate-200 pb-2">
             Pejabat Penandatangan Surat (Kepala Sekolah & Kasubag Tata Usaha)

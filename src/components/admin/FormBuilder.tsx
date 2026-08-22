@@ -16,7 +16,9 @@ import {
   Eye,
   Save,
   FileText,
-  AlertCircle
+  AlertCircle,
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react';
 
 interface FormBuilderProps {
@@ -35,6 +37,7 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
   );
 
   const fields = StorageService.getFieldsForLetterType(currentTypeId);
+  const settings = StorageService.getSettings();
 
   // New/Edit Field State
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
@@ -45,6 +48,7 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
   const [placeholder, setPlaceholder] = useState('');
   const [helpText, setHelpText] = useState('');
   const [optionsText, setOptionsText] = useState(''); // comma-separated
+  const [saveSuccessNotice, setSaveSuccessNotice] = useState<string | null>(null);
 
   const activeLetterType = letterTypes.find((t) => t.id === currentTypeId);
 
@@ -114,12 +118,16 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
     StorageService.saveFormFields(allFields);
     onRefresh();
     resetFieldForm();
+    setSaveSuccessNotice('Konfigurasi kolom formulir berhasil disimpan ke database!');
+    setTimeout(() => setSaveSuccessNotice(null), 4000);
   };
 
   const handleDeleteField = (fieldId: string) => {
     const allFields = StorageService.getFormFields().filter((f) => f.id !== fieldId);
     StorageService.saveFormFields(allFields);
     onRefresh();
+    setSaveSuccessNotice('Kolom berhasil dihapus');
+    setTimeout(() => setSaveSuccessNotice(null), 3000);
   };
 
   const handleDuplicateField = (f: FormField) => {
@@ -156,15 +164,44 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
     onRefresh();
   };
 
+  const fillMasterClasses = () => {
+    if (settings.classes && settings.classes.length > 0) {
+      setOptionsText(settings.classes.join(', '));
+      if (!label) setLabel('Kelas');
+      if (!name) setName('kelas');
+      setFieldType('dropdown');
+    }
+  };
+
+  const fillMasterMajors = () => {
+    if (settings.majors && settings.majors.length > 0) {
+      setOptionsText(settings.majors.join(', '));
+      if (!label) setLabel('Konsentrasi Keahlian / Jurusan');
+      if (!name) setName('jurusan');
+      setFieldType('dropdown');
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Save Notice */}
+      {saveSuccessNotice && (
+        <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 p-4 rounded-2xl flex items-center justify-between text-xs font-bold animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{saveSuccessNotice}</span>
+          </div>
+          <span className="text-[11px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">Cloud Firestore Synchronized</span>
+        </div>
+      )}
+
       {/* Header Selector */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Fitur Google Form Builder</span>
+          <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Fitur Form Builder No-Code</span>
           <h2 className="text-xl font-extrabold text-slate-900">Perancang Formulir Dinamis</h2>
           <p className="text-xs text-slate-500">
-            Tambah dan susun kolom isian secara visual tanpa perlu menulis kode (No-code).
+            Tambah, edit, dan perbaharui opsi kolom isian formulir surat resmi secara langsung.
           </p>
         </div>
 
@@ -192,14 +229,21 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
         <div className="lg:col-span-7 space-y-6">
           {/* Add / Edit Field Form Box */}
           <form onSubmit={handleSaveField} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4 text-xs">
-            <h3 className="font-extrabold text-slate-900 text-sm border-b border-slate-200 pb-3 flex items-center justify-between">
-              <span>{editingFieldId ? 'Edit Kolom Formulir' : 'Tambah Kolom Formulir Baru'}</span>
+            <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-sm">
+                  {editingFieldId ? 'Edit Kolom Formulir' : 'Tambah Kolom Formulir Baru'}
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Untuk: <strong className="text-blue-700">{activeLetterType?.name}</strong>
+                </p>
+              </div>
               {editingFieldId && (
-                <button type="button" onClick={resetFieldForm} className="text-slate-500 hover:text-slate-800 font-normal">
+                <button type="button" onClick={resetFieldForm} className="text-slate-500 hover:text-slate-800 font-bold bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl">
                   + Buat Baru
                 </button>
               )}
-            </h3>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -208,7 +252,7 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
                   type="text"
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
-                  placeholder="Contoh: Nomor NISN Siswa"
+                  placeholder="Contoh: Kelas / Jurusan / NISN"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold"
                   required
                 />
@@ -227,7 +271,7 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
                   <option value="email">Email</option>
                   <option value="phone">Nomor HP / WhatsApp</option>
                   <option value="date">Tanggal (Date)</option>
-                  <option value="dropdown">Pilihan Dropdown</option>
+                  <option value="dropdown">Pilihan Dropdown (Menu Tarik)</option>
                   <option value="radio">Radio Button (Satu Pilihan)</option>
                   <option value="checkbox">Checkbox (Banyak Pilihan)</option>
                   <option value="file_pdf">Upload File PDF</option>
@@ -241,7 +285,7 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
                   type="text"
                   value={placeholder}
                   onChange={(e) => setPlaceholder(e.target.value)}
-                  placeholder="Contoh: Masukkan 10 digit NISN..."
+                  placeholder="Contoh: Pilih salah satu atau isi..."
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300"
                 />
               </div>
@@ -252,24 +296,49 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
                   type="text"
                   value={helpText}
                   onChange={(e) => setHelpText(e.target.value)}
-                  placeholder="Contoh: Sesuai dengan kartu NISN aktif"
+                  placeholder="Contoh: Sesuai data rapor / kartu pelajar"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300"
                 />
               </div>
 
               {['dropdown', 'radio', 'checkbox'].includes(fieldType) && (
-                <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Opsi Pilihan (Pisahkan dengan Tanda Koma) *
-                  </label>
-                  <input
-                    type="text"
+                <div className="sm:col-span-2 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <label className="block font-bold text-slate-700">
+                      Opsi Pilihan (Pisahkan dengan Tanda Koma) *
+                    </label>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={fillMasterClasses}
+                        className="text-[11px] bg-blue-50 text-blue-800 hover:bg-blue-100 font-bold px-2.5 py-1 rounded-lg border border-blue-200 transition flex items-center gap-1"
+                        title="Salin daftar kelas dari Setting Sekolah"
+                      >
+                        <Sparkles className="w-3 h-3 text-blue-600" />
+                        Gunakan Master Kelas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={fillMasterMajors}
+                        className="text-[11px] bg-indigo-50 text-indigo-800 hover:bg-indigo-100 font-bold px-2.5 py-1 rounded-lg border border-indigo-200 transition flex items-center gap-1"
+                        title="Salin daftar jurusan dari Setting Sekolah"
+                      >
+                        <Sparkles className="w-3 h-3 text-indigo-600" />
+                        Gunakan Master Jurusan
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    rows={3}
                     value={optionsText}
                     onChange={(e) => setOptionsText(e.target.value)}
-                    placeholder="Contoh: Kelas X, Kelas XI, Kelas XII"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-blue-300 bg-blue-50/50"
+                    placeholder="Contoh: X (Sepuluh), X-A (Sepuluh A), X-B (Sepuluh B), XI (Sebelas)..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-blue-300 bg-blue-50/50 text-xs font-mono leading-relaxed"
                     required
                   />
+                  <p className="text-[11px] text-slate-400">
+                    💡 Tips: Masukkan setiap pilihan dipisahkan tanda koma <code>,</code>. Contoh: <code>Opsi 1, Opsi 2, Opsi 3</code>
+                  </p>
                 </div>
               )}
 
@@ -306,62 +375,79 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
               {fields.map((f, idx) => (
                 <div
                   key={f.id}
-                  className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-4 text-xs hover:border-blue-300 transition"
+                  className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 hover:border-blue-300 transition"
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-800 font-bold text-[11px] flex items-center justify-center">
-                      {idx + 1}
-                    </span>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-slate-900">{f.label}</h4>
-                        {f.required && <span className="text-rose-600 font-bold">*</span>}
-                        <span className="bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                          {f.type}
-                        </span>
+                  <div className="flex items-center justify-between gap-4 text-xs">
+                    <div className="flex items-center gap-3">
+                      <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-800 font-bold text-[11px] flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-bold text-slate-900">{f.label}</h4>
+                          {f.required && <span className="text-rose-600 font-bold">*</span>}
+                          <span className="bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                            {f.type}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-mono mt-0.5">key: {f.name}</p>
                       </div>
-                      <p className="text-[11px] text-slate-400 font-mono mt-0.5">key: {f.name}</p>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleMoveOrder(idx, 'up')}
+                        disabled={idx === 0}
+                        className="p-1.5 text-slate-600 hover:text-blue-700 disabled:opacity-30"
+                        title="Naikkan Urutan"
+                      >
+                        <ArrowUp className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleMoveOrder(idx, 'down')}
+                        disabled={idx === fields.length - 1}
+                        className="p-1.5 text-slate-600 hover:text-blue-700 disabled:opacity-30"
+                        title="Turunkan Urutan"
+                      >
+                        <ArrowDown className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDuplicateField(f)}
+                        className="p-1.5 text-slate-600 hover:text-blue-700"
+                        title="Duplikat Kolom"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleEditFieldClick(f)}
+                        className="p-1.5 text-blue-700 hover:bg-blue-100 rounded-lg font-bold"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteField(f.id)}
+                        className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg"
+                        title="Hapus Kolom"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleMoveOrder(idx, 'up')}
-                      disabled={idx === 0}
-                      className="p-1.5 text-slate-600 hover:text-blue-700 disabled:opacity-30"
-                      title="Naikkan Urutan"
-                    >
-                      <ArrowUp className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleMoveOrder(idx, 'down')}
-                      disabled={idx === fields.length - 1}
-                      className="p-1.5 text-slate-600 hover:text-blue-700 disabled:opacity-30"
-                      title="Turunkan Urutan"
-                    >
-                      <ArrowDown className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDuplicateField(f)}
-                      className="p-1.5 text-slate-600 hover:text-blue-700"
-                      title="Duplikat Kolom"
-                    >
-                      <Copy className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleEditFieldClick(f)}
-                      className="p-1.5 text-blue-700 hover:bg-blue-100 rounded-lg font-bold"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteField(f.id)}
-                      className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg"
-                      title="Hapus Kolom"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {/* If dropdown/radio/checkbox, display options pills */}
+                  {f.options && f.options.length > 0 && (
+                    <div className="pt-2 border-t border-slate-200 flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Opsi ({f.options.length}):</span>
+                      {f.options.map((opt, oIdx) => (
+                        <span
+                          key={oIdx}
+                          className="bg-white border border-slate-200 text-slate-700 text-[11px] px-2 py-0.5 rounded-md font-medium"
+                        >
+                          {opt}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -421,6 +507,28 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
                           <option key={i}>{o}</option>
                         ))}
                       </select>
+                    )}
+
+                    {f.type === 'radio' && (
+                      <div className="space-y-1.5 pt-1">
+                        {f.options?.map((o, i) => (
+                          <label key={i} className="flex items-center gap-2 text-slate-300 text-xs cursor-default">
+                            <input type="radio" disabled className="w-3.5 h-3.5" />
+                            <span>{o}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {f.type === 'checkbox' && (
+                      <div className="space-y-1.5 pt-1">
+                        {f.options?.map((o, i) => (
+                          <label key={i} className="flex items-center gap-2 text-slate-300 text-xs cursor-default">
+                            <input type="checkbox" disabled className="w-3.5 h-3.5" />
+                            <span>{o}</span>
+                          </label>
+                        ))}
+                      </div>
                     )}
 
                     {f.type.startsWith('file_') && (

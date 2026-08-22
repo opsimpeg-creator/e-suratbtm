@@ -114,16 +114,41 @@ export const StorageService = {
 
     // Subscribe to Firestore changes
     return subscribeToFirebase((data) => {
-      if (data.settings) setStored(KEYS.SETTINGS, data.settings);
-      if (data.users && data.users.length > 0) setStored(KEYS.USERS, data.users);
-      if (data.letterTypes && data.letterTypes.length > 0) setStored(KEYS.LETTER_TYPES, data.letterTypes);
-      if (data.formFields && data.formFields.length > 0) setStored(KEYS.FORM_FIELDS, data.formFields);
-      if (data.templates && data.templates.length > 0) setStored(KEYS.TEMPLATES, data.templates);
-      if (data.submissions) setStored(KEYS.SUBMISSIONS, data.submissions);
-      if (data.auditLogs) setStored(KEYS.AUDIT_LOGS, data.auditLogs);
-      if (data.complaints) setStored(KEYS.COMPLAINTS, data.complaints);
+      let changed = false;
+      if (data.settings) {
+        setStored(KEYS.SETTINGS, data.settings);
+        changed = true;
+      }
+      if (data.users && data.users.length > 0) {
+        setStored(KEYS.USERS, data.users);
+        changed = true;
+      }
+      if (data.letterTypes && data.letterTypes.length > 0) {
+        setStored(KEYS.LETTER_TYPES, data.letterTypes);
+        changed = true;
+      }
+      if (data.formFields && data.formFields.length > 0) {
+        setStored(KEYS.FORM_FIELDS, data.formFields);
+        changed = true;
+      }
+      if (data.templates && data.templates.length > 0) {
+        setStored(KEYS.TEMPLATES, data.templates);
+        changed = true;
+      }
+      if (data.submissions) {
+        setStored(KEYS.SUBMISSIONS, data.submissions);
+        changed = true;
+      }
+      if (data.auditLogs) {
+        setStored(KEYS.AUDIT_LOGS, data.auditLogs);
+        changed = true;
+      }
+      if (data.complaints) {
+        setStored(KEYS.COMPLAINTS, data.complaints);
+        changed = true;
+      }
 
-      if (onUpdate) onUpdate();
+      if (changed && onUpdate) onUpdate();
     });
   },
 
@@ -136,17 +161,15 @@ export const StorageService = {
       dirty = true;
     }
     if (!settings.classes || settings.classes.length === 0) {
-      settings.classes = INITIAL_SETTINGS.classes || ['X (Sepuluh)', 'XI (Sebelas)', 'XII (Dua Belas)', 'Alumni / Lulus'];
+      settings.classes = INITIAL_SETTINGS.classes;
       dirty = true;
     }
-    if (!settings.majors || settings.majors.length === 0) {
-      settings.majors = INITIAL_SETTINGS.majors || [
-        'Teknik Komputer & Jaringan (TKJ)',
-        'Rekayasa Perangkat Lunak (RPL)',
-        'Teknik Sepeda Motor (TSM)',
-        'Akuntansi & Keuangan Lembaga (AKL)',
-        'Desain Komunikasi Visual (DKV)'
-      ];
+    // Check if majors need cleanup (e.g. contains removed majors like APHPi or APAT, or old defaults)
+    const hasOutdatedMajors = (settings.majors || []).some(
+      (m) => m.includes('APHPi') || m.includes('APAT') || m.includes('Perikanan') || m.includes('TSM')
+    );
+    if (!settings.majors || settings.majors.length === 0 || hasOutdatedMajors) {
+      settings.majors = INITIAL_SETTINGS.majors;
       dirty = true;
     }
     if (!settings.operatingHours) {
@@ -374,7 +397,24 @@ export const StorageService = {
 
   // Form Fields
   getFormFields(): FormField[] {
-    return getStored<FormField[]>(KEYS.FORM_FIELDS, INITIAL_FORM_FIELDS);
+    const fields = getStored<FormField[]>(KEYS.FORM_FIELDS, INITIAL_FORM_FIELDS);
+    let dirty = false;
+    fields.forEach((f) => {
+      if (f.name === 'jurusan' || f.label.toLowerCase().includes('jurusan')) {
+        const hasOutdated = (f.options || []).some(
+          (opt) => opt.includes('APHPi') || opt.includes('APAT') || opt.includes('Perikanan') || opt.includes('TSM')
+        );
+        if (hasOutdated || !f.options || f.options.length === 0) {
+          f.options = [...INITIAL_SETTINGS.majors];
+          dirty = true;
+        }
+      }
+    });
+    if (dirty) {
+      setStored(KEYS.FORM_FIELDS, fields);
+      saveFormFieldsToFirebase(fields);
+    }
+    return fields;
   },
   getFieldsForLetterType(letterTypeId: string): FormField[] {
     const fields = this.getFormFields().filter((f) => f.letterTypeId === letterTypeId);

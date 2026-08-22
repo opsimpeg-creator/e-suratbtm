@@ -34,13 +34,25 @@ export const INITIAL_SETTINGS: SchoolSettings = {
   emailNotificationsEnabled: true,
   waNotificationsEnabled: true,
   waAdminNumber: '081234567890',
-  classes: ['X (Sepuluh)', 'XI (Sebelas)', 'XII (Dua Belas)', 'Alumni / Lulus'],
+  classes: [
+    'X (Sepuluh)',
+    'X-A (Sepuluh A)',
+    'X-B (Sepuluh B)',
+    'XI (Sebelas)',
+    'XI-A (Sebelas A)',
+    'XI-B (Sebelas B)',
+    'XII (Dua Belas)',
+    'XII-A (Dua Belas A)',
+    'XII-B (Dua Belas B)',
+    'Alumni / Lulus'
+  ],
   majors: [
-    'Teknik Komputer & Jaringan (TKJ)',
-    'Rekayasa Perangkat Lunak (RPL)',
-    'Teknik Sepeda Motor (TSM)',
-    'Akuntansi & Keuangan Lembaga (AKL)',
-    'Desain Komunikasi Visual (DKV)'
+    'Teknik Jaringan Komputer dan Telekomunikasi (TJKT)',
+    'Broadcasting dan Perfilman (BP)',
+    'Akuntansi dan Keuangan Lembaga (AKL)',
+    'Desain Komunikasi Visual (DKV)',
+    'Desain Pemodelan dan Informasi Bangunan (DPIB)',
+    'Teknik Alat Berat (TAB)'
   ],
   operatingHours: {
     isRamadanMode: false,
@@ -199,7 +211,17 @@ export const INITIAL_FORM_FIELDS: FormField[] = [
     name: 'kelas',
     type: 'dropdown',
     required: true,
-    options: ['X (Sepuluh)', 'XI (Sebelas)', 'XII (Dua Belas)'],
+    options: [
+      'X (Sepuluh)',
+      'X-A (Sepuluh A)',
+      'X-B (Sepuluh B)',
+      'XI (Sebelas)',
+      'XI-A (Sebelas A)',
+      'XI-B (Sebelas B)',
+      'XII (Dua Belas)',
+      'XII-A (Dua Belas A)',
+      'XII-B (Dua Belas B)'
+    ],
     order: 4,
   },
   {
@@ -210,12 +232,12 @@ export const INITIAL_FORM_FIELDS: FormField[] = [
     type: 'dropdown',
     required: true,
     options: [
-      'Teknik Komputer & Jaringan (TKJ)',
-      'Rekayasa Perangkat Lunak (RPL)',
-      'Teknik Kendaraan Ringan (TKR)',
-      'Teknik Sepeda Motor (TSM)',
-      'Akuntansi & Keuangan Lembaga (AKL)',
-      'Manajemen Perkantoran (MPLB)'
+      'Teknik Jaringan Komputer dan Telekomunikasi (TJKT)',
+      'Broadcasting dan Perfilman (BP)',
+      'Akuntansi dan Keuangan Lembaga (AKL)',
+      'Desain Komunikasi Visual (DKV)',
+      'Desain Pemodelan dan Informasi Bangunan (DPIB)',
+      'Teknik Alat Berat (TAB)'
     ],
     order: 5,
   },
@@ -289,12 +311,12 @@ export const INITIAL_FORM_FIELDS: FormField[] = [
     type: 'dropdown',
     required: true,
     options: [
-      'Teknik Komputer & Jaringan',
-      'Rekayasa Perangkat Lunak',
-      'Teknik Kendaraan Ringan',
-      'Teknik Sepeda Motor',
-      'Akuntansi & Keuangan Lembaga',
-      'Manajemen Perkantoran'
+      'Teknik Jaringan Komputer dan Telekomunikasi (TJKT)',
+      'Broadcasting dan Perfilman (BP)',
+      'Akuntansi dan Keuangan Lembaga (AKL)',
+      'Desain Komunikasi Visual (DKV)',
+      'Desain Pemodelan dan Informasi Bangunan (DPIB)',
+      'Teknik Alat Berat (TAB)'
     ],
     order: 4,
   },

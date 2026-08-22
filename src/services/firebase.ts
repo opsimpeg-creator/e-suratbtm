@@ -180,8 +180,8 @@ export function isDummyComplaint(c: any): boolean {
   return false;
 }
 
-// Subscribe to real-time updates for all collections
-export function subscribeToFirebase(callback: (data: {
+// Subscribe to real-time updates for collections (granular updates to avoid data races)
+export function subscribeToFirebase(callback: (data: Partial<{
   settings: SchoolSettings;
   users: User[];
   letterTypes: LetterType[];
@@ -190,16 +190,7 @@ export function subscribeToFirebase(callback: (data: {
   submissions: SubmissionRequest[];
   auditLogs: AuditLog[];
   complaints?: ComplaintTicket[];
-}) => void): () => void {
-  let settings = INITIAL_SETTINGS;
-  let users: User[] = INITIAL_USERS;
-  let letterTypes: LetterType[] = INITIAL_LETTER_TYPES;
-  let formFields: FormField[] = INITIAL_FORM_FIELDS;
-  let templates: LetterTemplate[] = INITIAL_TEMPLATES;
-  let submissions: SubmissionRequest[] = INITIAL_SUBMISSIONS;
-  let auditLogs: AuditLog[] = INITIAL_AUDIT_LOGS;
-  let complaints: ComplaintTicket[] = INITIAL_COMPLAINTS;
-
+}>) => void): () => void {
   const handleSnapshotError = (collectionName: string) => (err: any) => {
     console.warn(`Firestore snapshot notice for ${collectionName}:`, err?.message || 'operating in local/offline fallback mode');
   };
@@ -208,8 +199,7 @@ export function subscribeToFirebase(callback: (data: {
     doc(db, COLLECTIONS.SETTINGS, 'global'),
     (snap) => {
       if (snap.exists()) {
-        settings = snap.data() as SchoolSettings;
-        trigger();
+        callback({ settings: snap.data() as SchoolSettings });
       }
     },
     handleSnapshotError('settings')
@@ -218,8 +208,10 @@ export function subscribeToFirebase(callback: (data: {
   const unsubUsers = onSnapshot(
     collection(db, COLLECTIONS.USERS),
     (snap) => {
-      users = snap.docs.map((d) => d.data() as User);
-      trigger();
+      if (!snap.empty) {
+        const users = snap.docs.map((d) => d.data() as User);
+        callback({ users });
+      }
     },
     handleSnapshotError('users')
   );
@@ -227,8 +219,10 @@ export function subscribeToFirebase(callback: (data: {
   const unsubLetterTypes = onSnapshot(
     collection(db, COLLECTIONS.LETTER_TYPES),
     (snap) => {
-      letterTypes = snap.docs.map((d) => d.data() as LetterType);
-      trigger();
+      if (!snap.empty) {
+        const letterTypes = snap.docs.map((d) => d.data() as LetterType);
+        callback({ letterTypes });
+      }
     },
     handleSnapshotError('letterTypes')
   );
@@ -236,8 +230,10 @@ export function subscribeToFirebase(callback: (data: {
   const unsubFormFields = onSnapshot(
     collection(db, COLLECTIONS.FORM_FIELDS),
     (snap) => {
-      formFields = snap.docs.map((d) => d.data() as FormField);
-      trigger();
+      if (!snap.empty) {
+        const formFields = snap.docs.map((d) => d.data() as FormField);
+        callback({ formFields });
+      }
     },
     handleSnapshotError('formFields')
   );
@@ -245,8 +241,10 @@ export function subscribeToFirebase(callback: (data: {
   const unsubTemplates = onSnapshot(
     collection(db, COLLECTIONS.TEMPLATES),
     (snap) => {
-      templates = snap.docs.map((d) => d.data() as LetterTemplate);
-      trigger();
+      if (!snap.empty) {
+        const templates = snap.docs.map((d) => d.data() as LetterTemplate);
+        callback({ templates });
+      }
     },
     handleSnapshotError('templates')
   );
@@ -266,10 +264,8 @@ export function subscribeToFirebase(callback: (data: {
         }
       });
 
-      submissions = realOnly;
-      // Sort by createdAt desc
-      submissions.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      trigger();
+      realOnly.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      callback({ submissions: realOnly });
     },
     handleSnapshotError('submissions')
   );
@@ -277,9 +273,9 @@ export function subscribeToFirebase(callback: (data: {
   const unsubAuditLogs = onSnapshot(
     collection(db, COLLECTIONS.AUDIT_LOGS),
     (snap) => {
-      auditLogs = snap.docs.map((d) => d.data() as AuditLog);
+      const auditLogs = snap.docs.map((d) => d.data() as AuditLog);
       auditLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      trigger();
+      callback({ auditLogs });
     },
     handleSnapshotError('auditLogs')
   );
@@ -298,25 +294,11 @@ export function subscribeToFirebase(callback: (data: {
         }
       });
 
-      complaints = realOnly;
-      complaints.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      trigger();
+      realOnly.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      callback({ complaints: realOnly });
     },
     handleSnapshotError('complaints')
   );
-
-  function trigger() {
-    callback({
-      settings,
-      users,
-      letterTypes,
-      formFields,
-      templates,
-      submissions,
-      auditLogs,
-      complaints,
-    });
-  }
 
   // Return unsubscribe function
   return () => {
@@ -437,6 +419,16 @@ export async function saveFormFieldsToFirebase(fields: FormField[]): Promise<voi
   if (isQuotaExceeded) return;
   try {
     const batch = writeBatch(db);
+    const snap = await getDocs(collection(db, COLLECTIONS.FORM_FIELDS));
+    const newIds = new Set(fields.map((f) => f.id));
+
+    // Delete any fields from Firestore that were deleted locally
+    snap.docs.forEach((docSnapshot) => {
+      if (!newIds.has(docSnapshot.id)) {
+        batch.delete(docSnapshot.ref);
+      }
+    });
+
     fields.forEach((f) => {
       batch.set(doc(db, COLLECTIONS.FORM_FIELDS, f.id), cleanForFirestore(f));
     });
