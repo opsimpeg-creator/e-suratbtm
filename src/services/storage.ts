@@ -199,32 +199,6 @@ export const StorageService = {
     setStored(KEYS.SETTINGS, settings);
     saveSettingsToFirebase(settings);
 
-    // Synchronize form fields representing 'kelas' or 'jurusan' so they immediately match the updated master lists
-    try {
-      const allFields = getStored<FormField[]>(KEYS.FORM_FIELDS, INITIAL_FORM_FIELDS);
-      let fieldsDirty = false;
-      allFields.forEach((f) => {
-        if (f.name === 'kelas' || (f.label.toLowerCase().includes('kelas') && ['dropdown', 'radio'].includes(f.type))) {
-          if (settings.classes && settings.classes.length > 0) {
-            f.options = [...settings.classes];
-            fieldsDirty = true;
-          }
-        }
-        if (f.name === 'jurusan' || (f.label.toLowerCase().includes('jurusan') && ['dropdown', 'radio'].includes(f.type))) {
-          if (settings.majors && settings.majors.length > 0) {
-            f.options = [...settings.majors];
-            fieldsDirty = true;
-          }
-        }
-      });
-      if (fieldsDirty) {
-        setStored(KEYS.FORM_FIELDS, allFields);
-        saveFormFieldsToFirebase(allFields);
-      }
-    } catch (e) {
-      console.warn('Sync form fields from master settings error:', e);
-    }
-
     // Background sync to Google Apps Script
     import('./appsScript').then(({ AppsScriptService }) => {
       AppsScriptService.sendNomorSuratToAppsScript(settings.letterNumberPattern, settings.currentSeqNumber).catch((err) => {
@@ -425,36 +399,7 @@ export const StorageService = {
 
   // Form Fields
   getFormFields(): FormField[] {
-    const fields = getStored<FormField[]>(KEYS.FORM_FIELDS, INITIAL_FORM_FIELDS);
-    const settings = getStored<SchoolSettings>(KEYS.SETTINGS, INITIAL_SETTINGS);
-    let dirty = false;
-    const normalized = fields.map((orig) => {
-      const f = { ...orig };
-      if (f.name === 'jurusan' || f.label.toLowerCase().includes('jurusan')) {
-        const hasOutdated = (f.options || []).some(
-          (opt) => opt.includes('APHPi') || opt.includes('APAT') || opt.includes('Perikanan') || opt.includes('TSM')
-        );
-        if (hasOutdated || !f.options || f.options.length === 0) {
-          f.options = settings.majors && settings.majors.length > 0 ? [...settings.majors] : [...INITIAL_SETTINGS.majors];
-          dirty = true;
-        }
-      }
-      if (f.name === 'kelas' || (f.label.toLowerCase().includes('kelas') && ['dropdown', 'radio'].includes(f.type))) {
-        // If kelas options was truncated or empty (e.g. only 1 item like ['X (Sepuluh)'])
-        if (!f.options || f.options.length <= 1) {
-          f.options = settings.classes && settings.classes.length > 1 ? [...settings.classes] : [...INITIAL_SETTINGS.classes];
-          dirty = true;
-        }
-      }
-      return f;
-    });
-    if (dirty) {
-      setTimeout(() => {
-        setStored(KEYS.FORM_FIELDS, normalized, false);
-        saveFormFieldsToFirebase(normalized);
-      }, 0);
-    }
-    return normalized;
+    return getStored<FormField[]>(KEYS.FORM_FIELDS, INITIAL_FORM_FIELDS);
   },
   getFieldsForLetterType(letterTypeId: string): FormField[] {
     const fields = this.getFormFields().filter((f) => f.letterTypeId === letterTypeId);
