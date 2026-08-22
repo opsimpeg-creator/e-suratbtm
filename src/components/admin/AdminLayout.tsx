@@ -51,7 +51,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const newComplaintsCount = complaints.filter((c) => c.status === 'Baru').length;
 
   const navItems = [
-    { id: 'admin-dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: 'admin-dashboard', label: 'Dashboard SaaS', icon: <LayoutDashboard className="w-4 h-4" /> },
     {
       id: 'permohonan',
       label: 'Data Permohonan Surat',
