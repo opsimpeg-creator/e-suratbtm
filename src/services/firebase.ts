@@ -415,22 +415,30 @@ export async function deleteLetterTypeFromFirebase(id: string): Promise<void> {
   }
 }
 
+export async function saveSingleFormFieldToFirebase(field: FormField): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await setDoc(doc(db, COLLECTIONS.FORM_FIELDS, field.id), cleanForFirestore(field), { merge: true });
+  } catch (err) {
+    handleFirestoreError('saveSingleFormFieldToFirebase', err);
+  }
+}
+
+export async function deleteFormFieldFromFirebase(id: string): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    await deleteDoc(doc(db, COLLECTIONS.FORM_FIELDS, id));
+  } catch (err) {
+    handleFirestoreError('deleteFormFieldFromFirebase', err);
+  }
+}
+
 export async function saveFormFieldsToFirebase(fields: FormField[]): Promise<void> {
   if (isQuotaExceeded) return;
   try {
     const batch = writeBatch(db);
-    const snap = await getDocs(collection(db, COLLECTIONS.FORM_FIELDS));
-    const newIds = new Set(fields.map((f) => f.id));
-
-    // Delete any fields from Firestore that were deleted locally
-    snap.docs.forEach((docSnapshot) => {
-      if (!newIds.has(docSnapshot.id)) {
-        batch.delete(docSnapshot.ref);
-      }
-    });
-
     fields.forEach((f) => {
-      batch.set(doc(db, COLLECTIONS.FORM_FIELDS, f.id), cleanForFirestore(f));
+      batch.set(doc(db, COLLECTIONS.FORM_FIELDS, f.id), cleanForFirestore(f), { merge: true });
     });
     await batch.commit();
   } catch (err) {

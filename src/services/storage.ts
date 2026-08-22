@@ -34,6 +34,8 @@ import {
   saveLetterTypeToFirebase,
   deleteLetterTypeFromFirebase,
   saveFormFieldsToFirebase,
+  saveSingleFormFieldToFirebase,
+  deleteFormFieldFromFirebase,
   saveTemplateToFirebase,
   saveAuditLogToFirebase,
   saveComplaintToFirebase,
@@ -405,9 +407,25 @@ export const StorageService = {
     const fields = this.getFormFields().filter((f) => f.letterTypeId === letterTypeId);
     return fields.sort((a, b) => a.order - b.order);
   },
-  saveFormFields(fields: FormField[]): void {
+  async saveFormFields(fields: FormField[]): Promise<void> {
     setStored(KEYS.FORM_FIELDS, fields);
-    saveFormFieldsToFirebase(fields);
+    await saveFormFieldsToFirebase(fields);
+  },
+  async saveSingleFormField(field: FormField): Promise<void> {
+    const allFields = this.getFormFields();
+    const idx = allFields.findIndex((f) => f.id === field.id);
+    if (idx !== -1) {
+      allFields[idx] = field;
+    } else {
+      allFields.push(field);
+    }
+    setStored(KEYS.FORM_FIELDS, allFields);
+    await saveSingleFormFieldToFirebase(field);
+  },
+  async deleteFormField(fieldId: string): Promise<void> {
+    const allFields = this.getFormFields().filter((f) => f.id !== fieldId);
+    setStored(KEYS.FORM_FIELDS, allFields);
+    await deleteFormFieldFromFirebase(fieldId);
   },
 
   // Templates

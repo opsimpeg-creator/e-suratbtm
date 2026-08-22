@@ -18,7 +18,9 @@ import {
   FileText,
   AlertCircle,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 interface FormBuilderProps {
@@ -49,6 +51,7 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
   const [helpText, setHelpText] = useState('');
   const [optionsText, setOptionsText] = useState(''); // comma-separated
   const [saveSuccessNotice, setSaveSuccessNotice] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const activeLetterType = letterTypes.find((t) => t.id === currentTypeId);
 
@@ -74,83 +77,112 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
     setOptionsText(f.options ? f.options.join(', ') : '');
   };
 
-  const handleSaveField = (e: React.FormEvent) => {
+  const handleSaveField = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!label.trim()) return;
+    if (!label.trim() || isSaving) return;
 
-    const allFields = StorageService.getFormFields();
-    const parsedOptions = ['dropdown', 'radio', 'checkbox'].includes(fieldType)
-      ? optionsText
-          .split(/[\n,]+/)
-          .map((o) => o.trim())
-          .filter(Boolean)
-      : undefined;
+    setIsSaving(true);
+    try {
+      const allFields = StorageService.getFormFields();
+      const parsedOptions = ['dropdown', 'radio', 'checkbox'].includes(fieldType)
+        ? optionsText
+            .split(/[\n,]+/)
+            .map((o) => o.trim())
+            .filter(Boolean)
+        : undefined;
 
-    const fieldNameKey = name.trim() ? name.trim().toLowerCase().replace(/\s+/g, '_') : label.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const fieldNameKey = name.trim() ? name.trim().toLowerCase().replace(/\s+/g, '_') : label.toLowerCase().replace(/[^a-z0-9]/g, '_');
 
-    if (editingFieldId) {
-      const idx = allFields.findIndex((f) => f.id === editingFieldId);
-      if (idx !== -1) {
-        allFields[idx] = {
-          ...allFields[idx],
+      let targetField: FormField;
+
+      if (editingFieldId) {
+        const idx = allFields.findIndex((f) => f.id === editingFieldId);
+        targetField = {
+          ...(allFields[idx] || {}),
+          id: editingFieldId,
+          letterTypeId: currentTypeId,
           label,
           name: fieldNameKey,
           type: fieldType,
           required,
-          placeholder,
-          helpText,
+          placeholder: placeholder.trim() || undefined,
+          helpText: helpText.trim() || undefined,
           options: parsedOptions,
+          order: allFields[idx]?.order || 1,
         };
+        if (idx !== -1) {
+          allFields[idx] = targetField;
+        }
+      } else {
+        targetField = {
+          id: 'f-' + Date.now(),
+          letterTypeId: currentTypeId,
+          label,
+          name: fieldNameKey,
+          type: fieldType,
+          required,
+          placeholder: placeholder.trim() || undefined,
+          helpText: helpText.trim() || undefined,
+          options: parsedOptions,
+          order: fields.length + 1,
+        };
+        allFields.push(targetField);
       }
-    } else {
-      const newField: FormField = {
+
+      await StorageService.saveSingleFormField(targetField);
+      await StorageService.saveFormFields(allFields);
+
+      onRefresh();
+      resetFieldForm();
+      setSaveSuccessNotice('Konfigurasi kolom formulir berhasil disimpan permanen ke Cloud Firestore!');
+      setTimeout(() => setSaveSuccessNotice(null), 4000);
+    } catch (err) {
+      console.error('Error saving form field:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteField = async (fieldId: string) => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await StorageService.deleteFormField(fieldId);
+      const allFields = StorageService.getFormFields().filter((f) => f.id !== fieldId);
+      await StorageService.saveFormFields(allFields);
+      onRefresh();
+      setSaveSuccessNotice('Kolom berhasil dihapus dari Cloud Firestore');
+      setTimeout(() => setSaveSuccessNotice(null), 3000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDuplicateField = async (f: FormField) => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const allFields = StorageService.getFormFields();
+      const dup: FormField = {
+        ...f,
         id: 'f-' + Date.now(),
-        letterTypeId: currentTypeId,
-        label,
-        name: fieldNameKey,
-        type: fieldType,
-        required,
-        placeholder,
-        helpText,
-        options: parsedOptions,
+        label: f.label + ' (Salinan)',
+        name: f.name + '_copy',
         order: fields.length + 1,
       };
-      allFields.push(newField);
+      allFields.push(dup);
+      await StorageService.saveSingleFormField(dup);
+      await StorageService.saveFormFields(allFields);
+      onRefresh();
+    } finally {
+      setIsSaving(false);
     }
-
-    StorageService.saveFormFields(allFields);
-    onRefresh();
-    resetFieldForm();
-    setSaveSuccessNotice('Konfigurasi kolom formulir berhasil disimpan ke database!');
-    setTimeout(() => setSaveSuccessNotice(null), 4000);
   };
 
-  const handleDeleteField = (fieldId: string) => {
-    const allFields = StorageService.getFormFields().filter((f) => f.id !== fieldId);
-    StorageService.saveFormFields(allFields);
-    onRefresh();
-    setSaveSuccessNotice('Kolom berhasil dihapus');
-    setTimeout(() => setSaveSuccessNotice(null), 3000);
-  };
-
-  const handleDuplicateField = (f: FormField) => {
-    const allFields = StorageService.getFormFields();
-    const dup: FormField = {
-      ...f,
-      id: 'f-' + Date.now(),
-      label: f.label + ' (Salinan)',
-      name: f.name + '_copy',
-      order: fields.length + 1,
-    };
-    allFields.push(dup);
-    StorageService.saveFormFields(allFields);
-    onRefresh();
-  };
-
-  const handleMoveOrder = (idx: number, direction: 'up' | 'down') => {
+  const handleMoveOrder = async (idx: number, direction: 'up' | 'down') => {
     const currentFields = [...fields];
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= currentFields.length) return;
+    if (targetIdx < 0 || targetIdx >= currentFields.length || isSaving) return;
 
     // Swap order
     const tempOrder = currentFields[idx].order;
@@ -163,8 +195,27 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
       if (i !== -1) allFields[i] = cf;
     });
 
-    StorageService.saveFormFields(allFields);
-    onRefresh();
+    setIsSaving(true);
+    try {
+      await StorageService.saveFormFields(allFields);
+      onRefresh();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSyncAllFieldsNow = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const allFields = StorageService.getFormFields();
+      await StorageService.saveFormFields(allFields);
+      onRefresh();
+      setSaveSuccessNotice('Seluruh kolom formulir berhasil disinkronkan ke Cloud Firestore!');
+      setTimeout(() => setSaveSuccessNotice(null), 4000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const fillMasterClasses = () => {
@@ -360,10 +411,20 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
 
                 <button
                   type="submit"
-                  className="bg-blue-700 hover:bg-blue-800 text-white font-bold px-6 py-2.5 rounded-xl shadow-md transition flex items-center gap-2"
+                  disabled={isSaving}
+                  className="bg-blue-700 hover:bg-blue-800 disabled:bg-blue-400 text-white font-bold px-6 py-2.5 rounded-xl shadow-md transition flex items-center gap-2"
                 >
-                  <Save className="w-4 h-4" />
-                  <span>{editingFieldId ? 'Simpan Perubahan' : 'Tambah Kolom'}</span>
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Menyimpan ke Cloud...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>{editingFieldId ? 'Simpan Perubahan' : 'Tambah Kolom'}</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -371,10 +432,24 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
 
           {/* Configured Fields Drag/Reorder List */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-            <h3 className="font-extrabold text-slate-900 text-sm border-b border-slate-200 pb-3 flex items-center justify-between">
-              <span>Daftar Kolom Isian ({fields.length} Kolom)</span>
-              <span className="text-xs text-slate-400 font-normal">Gunakan panah untuk mengatur urutan</span>
-            </h3>
+            <div className="border-b border-slate-200 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-sm">
+                  Daftar Kolom Isian ({fields.length} Kolom)
+                </h3>
+                <p className="text-xs text-slate-400 font-normal">Gunakan panah untuk mengatur urutan</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSyncAllFieldsNow}
+                disabled={isSaving}
+                className="text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold px-3 py-1.5 rounded-xl border border-slate-200 transition flex items-center gap-1.5 self-start sm:self-auto"
+                title="Kunci & sinkronkan semua kolom ke Cloud Firestore"
+              >
+                {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                <span>Sinkronkan ke Cloud</span>
+              </button>
+            </div>
 
             <div className="space-y-3">
               {fields.map((f, idx) => (
