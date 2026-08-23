@@ -73,6 +73,97 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
     });
   };
 
+  const handleOpenOfficialLetterPreview = async (req: SubmissionRequest) => {
+    if (req.issuedDocumentUrl) {
+      handleOpenPreview(
+        req.issuedDocumentUrl,
+        req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
+      );
+    } else {
+      try {
+        const tpl = StorageService.getTemplateForLetterType(req.letterTypeId);
+        const blobUrl = await PdfGenerator.getOfficialLetterPdfBlobUrl(req, tpl, settings);
+        setPreviewModalFile({
+          fileName: req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`,
+          fileUrl: blobUrl,
+        });
+      } catch (err) {
+        console.error('Error generating preview:', err);
+      }
+    }
+  };
+
+  const handleDownloadOfficialLetter = async (req: SubmissionRequest) => {
+    if (req.issuedDocumentUrl) {
+      handleDownloadFile(
+        req.issuedDocumentUrl,
+        req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
+      );
+    } else {
+      const tpl = StorageService.getTemplateForLetterType(req.letterTypeId);
+      await PdfGenerator.generateOfficialLetterPdf(req, tpl, settings);
+    }
+  };
+
+  // Helper to construct complete and informative timeline history
+  const getRenderedTimeline = (req: SubmissionRequest) => {
+    const existing = req.timeline && req.timeline.length > 0 ? [...req.timeline] : [];
+    
+    // If no timeline exists, create initial
+    if (existing.length === 0) {
+      existing.push({
+        status: 'Menunggu',
+        timestamp: req.createdAt || new Date().toISOString(),
+        actor: 'Sistem Public',
+        note: 'Permohonan surat berhasil dikirim dan terdaftar di database.',
+      });
+    }
+
+    // If status is Selesai but timeline only has initial or missing Selesai
+    if (req.status === 'Selesai') {
+      const hasDiproses = existing.some((t) => t.status === 'Diproses');
+      if (!hasDiproses) {
+        existing.push({
+          status: 'Diproses',
+          timestamp: req.updatedAt || req.createdAt,
+          actor: 'Staf TU',
+          note: 'Permohonan telah diverifikasi dan disetujui oleh Petugas Tata Usaha.',
+        });
+      }
+      const hasSelesai = existing.some((t) => t.status === 'Selesai');
+      if (!hasSelesai) {
+        existing.push({
+          status: 'Selesai',
+          timestamp: req.officialLetterDate || req.updatedAt || new Date().toISOString(),
+          actor: 'Tata Usaha SMKN 1 Batumandi',
+          note: `Surat resmi telah diterbitkan dengan Nomor: ${req.officialLetterNumber || '-'}`,
+        });
+      }
+    } else if (req.status === 'Diproses') {
+      const hasDiproses = existing.some((t) => t.status === 'Diproses');
+      if (!hasDiproses) {
+        existing.push({
+          status: 'Diproses',
+          timestamp: req.updatedAt || new Date().toISOString(),
+          actor: 'Staf TU',
+          note: req.processingNote || 'Permohonan sedang dalam proses pembuatan dan penandatanganan surat.',
+        });
+      }
+    } else if (req.status === 'Ditolak') {
+      const hasDitolak = existing.some((t) => t.status === 'Ditolak');
+      if (!hasDitolak) {
+        existing.push({
+          status: 'Ditolak',
+          timestamp: req.updatedAt || new Date().toISOString(),
+          actor: 'Tata Usaha',
+          note: req.rejectionReason || 'Persyaratan data belum lengkap atau permohonan ditolak.',
+        });
+      }
+    }
+
+    return existing;
+  };
+
   const handleDownloadFile = (rawUrl: string, fileName: string) => {
     if (!rawUrl) return;
     if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
@@ -269,19 +360,32 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
             <h3 className="font-bold text-slate-900 text-sm">Riwayat & Status Verifikasi</h3>
 
             <div className="relative pl-6 border-l-2 border-blue-200 space-y-6">
-              {foundRequest.timeline.map((item, idx) => (
-                <div key={idx} className="relative group">
-                  <div className="absolute -left-[31px] top-0 w-4 h-4 rounded-full bg-blue-600 border-2 border-white shadow-xs"></div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 text-xs">{item.status}</span>
-                      <span className="text-[11px] text-slate-400">• {new Date(item.timestamp).toLocaleString('id-ID')}</span>
+              {getRenderedTimeline(foundRequest).map((item, idx, arr) => {
+                const isLatest = idx === arr.length - 1;
+                const isComplete = item.status === 'Selesai';
+                const isRejected = item.status === 'Ditolak';
+
+                let dotClass = 'bg-blue-600';
+                if (isComplete) dotClass = 'bg-emerald-600 ring-4 ring-emerald-100';
+                else if (isRejected) dotClass = 'bg-rose-600 ring-4 ring-rose-100';
+                else if (isLatest) dotClass = 'bg-blue-600 ring-4 ring-blue-100';
+
+                return (
+                  <div key={idx} className="relative group">
+                    <div className={`absolute -left-[31px] top-0.5 w-4 h-4 rounded-full border-2 border-white shadow-xs ${dotClass}`}></div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-bold text-xs ${isComplete ? 'text-emerald-700' : isRejected ? 'text-rose-700' : 'text-slate-900'}`}>
+                          {item.status === 'Selesai' ? 'Selesai / Terbit' : item.status === 'Diproses' ? 'Sedang Diproses Staf TU' : item.status}
+                        </span>
+                        <span className="text-[11px] text-slate-400">• {new Date(item.timestamp).toLocaleString('id-ID')}</span>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-0.5">{item.note}</p>
+                      {item.actor && <p className="text-[10px] text-slate-400 mt-0.5">Oleh: {item.actor}</p>}
                     </div>
-                    <p className="text-xs text-slate-600 mt-0.5">{item.note}</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Oleh: {item.actor}</p>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -298,37 +402,22 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
             {foundRequest.status === 'Selesai' && (
               <>
                 <button
-                  onClick={() => {
-                    if (foundRequest.issuedDocumentUrl) {
-                      handleOpenPreview(
-                        foundRequest.issuedDocumentUrl,
-                        foundRequest.formData?._officialFileName || `Surat_Resmi_${foundRequest.requestNumber}.pdf`
-                      );
-                    } else {
-                      const tpl = StorageService.getTemplateForLetterType(foundRequest.letterTypeId);
-                      PdfGenerator.generateOfficialLetterPdf(foundRequest, tpl, settings);
-                    }
-                  }}
+                  type="button"
+                  onClick={() => handleOpenOfficialLetterPreview(foundRequest)}
                   className="px-6 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Eye className="w-4 h-4" />
                   <span>Pratinjau Surat Resmi</span>
                 </button>
 
-                {foundRequest.issuedDocumentUrl && (
-                  <button
-                    onClick={() => {
-                      handleDownloadFile(
-                        foundRequest.issuedDocumentUrl!,
-                        foundRequest.formData?._officialFileName || `Surat_Resmi_${foundRequest.requestNumber}.pdf`
-                      );
-                    }}
-                    className="px-5 py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <FileDown className="w-4 h-4" />
-                    <span>Download Surat Resmi (PDF)</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleDownloadOfficialLetter(foundRequest)}
+                  className="px-5 py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <FileDown className="w-4 h-4" />
+                  <span>Download Surat Resmi (PDF)</span>
+                </button>
               </>
             )}
           </div>

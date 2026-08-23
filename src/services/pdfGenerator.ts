@@ -4,9 +4,9 @@ import { SubmissionRequest, SchoolSettings, LetterTemplate } from '../types';
 
 export const PdfGenerator = {
   /**
-   * Generates a PDF for Bukti Pengajuan Surat (Applicant Proof)
+   * Builds jsPDF document for Bukti Pengajuan Surat
    */
-  async generateProofPdf(request: SubmissionRequest, settings: SchoolSettings): Promise<void> {
+  async buildProofDoc(request: SubmissionRequest, settings: SchoolSettings): Promise<jsPDF> {
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -48,7 +48,7 @@ export const PdfGenerator = {
     // Status Badge
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(234, 88, 12); // Orange for Pending / Diproses
+    doc.setTextColor(234, 88, 12);
     doc.text(`STATUS: ${request.status.toUpperCase()}`, 140, 50);
 
     // Table Data Pemohon
@@ -91,8 +91,8 @@ export const PdfGenerator = {
     y += 8;
 
     doc.setFontSize(9);
-    Object.entries(request.formData).forEach(([key, val]) => {
-      if (y > 230) return;
+    Object.entries(request.formData || {}).forEach(([key, val]) => {
+      if (y > 230 || key.startsWith('_')) return;
       const displayKey = key.replace(/_/g, ' ').toUpperCase();
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(71, 85, 105);
@@ -127,7 +127,7 @@ export const PdfGenerator = {
     const notes = [
       '1. Simpan Bukti Pengajuan ini atau catat Nomor Permohonan Anda.',
       '2. Cek status permohonan secara real-time di website dengan memindai QR Code.',
-      '3. Surat yang telah selesai dapat langsung diunduh melalui halaman Cek Status.',
+      '3. Surat yang telah selesai dapat langsung dilihat atau diunduh melalui menu Cek Status.',
       '4. Bebas biaya administrasi (Gratis Rp 0).',
     ];
 
@@ -142,17 +142,34 @@ export const PdfGenerator = {
     doc.setTextColor(148, 163, 184);
     doc.text(`Dicetak otomatis dari Sistem E-Surat TU ${settings.schoolName} pada ${new Date().toLocaleString('id-ID')}`, 105, 280, { align: 'center' });
 
+    return doc;
+  },
+
+  /**
+   * Returns Blob URL for Bukti Pengajuan PDF preview
+   */
+  async getProofPdfBlobUrl(request: SubmissionRequest, settings: SchoolSettings): Promise<string> {
+    const doc = await this.buildProofDoc(request, settings);
+    const blob = doc.output('blob');
+    return URL.createObjectURL(blob);
+  },
+
+  /**
+   * Downloads Bukti Pengajuan PDF
+   */
+  async generateProofPdf(request: SubmissionRequest, settings: SchoolSettings): Promise<void> {
+    const doc = await this.buildProofDoc(request, settings);
     doc.save(`Bukti_Pengajuan_${request.requestNumber}.pdf`);
   },
 
   /**
-   * Generates Official School Letter PDF (Surat Resmi PDF)
+   * Builds jsPDF document for Official Letter (Surat Resmi)
    */
-  async generateOfficialLetterPdf(
+  async buildOfficialLetterDoc(
     request: SubmissionRequest,
     template: LetterTemplate | undefined,
     settings: SchoolSettings
-  ): Promise<void> {
+  ): Promise<jsPDF> {
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -163,17 +180,17 @@ export const PdfGenerator = {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(15, 23, 42);
-    doc.text(settings.schoolSubTitle.toUpperCase(), 105, 18, { align: 'center' });
+    doc.text((settings.schoolSubTitle || 'PEMERINTAH PROVINSI KALIMANTAN SELATAN\nDINAS PENDIDIKAN DAN KEBUDAYAAN').toUpperCase(), 105, 16, { align: 'center' });
 
-    doc.setFontSize(16);
+    doc.setFontSize(15);
     doc.setTextColor(30, 64, 175);
-    doc.text(settings.schoolName.toUpperCase(), 105, 25, { align: 'center' });
+    doc.text((settings.schoolName || 'SMK NEGERI 1 BATUMANDI').toUpperCase(), 105, 24, { align: 'center' });
 
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
-    doc.text(settings.address, 105, 30, { align: 'center' });
-    doc.text(`Telp: ${settings.phone} | Email: ${settings.email} | Website: ${settings.website}`, 105, 34, { align: 'center' });
+    doc.text(settings.address || 'Jl. Ahmad Yani KM. 8.5 Batumandi, Kab. Balangan', 105, 30, { align: 'center' });
+    doc.text(`Telp: ${settings.phone || '-'} | Email: ${settings.email || '-'} | Website: ${settings.website || '-'}`, 105, 34, { align: 'center' });
 
     // Double Kop Lines
     doc.setDrawColor(30, 64, 175);
@@ -211,10 +228,10 @@ export const PdfGenerator = {
 
     // Student Data Table
     const dataRows: [string, string][] = [
-      ['Nama Lengkap', request.formData.nama || request.applicantName],
-      ['NIS / NISN', `${request.formData.nis || '-'} / ${request.formData.nisn || '-'}`],
-      ['Kelas / Jurusan', `${request.formData.kelas || '-'} (${request.formData.jurusan || '-'})`],
-      ['Keperluan', request.formData.keperluan || 'Administrasi Tata Usaha Sekolah'],
+      ['Nama Lengkap', request.formData?.nama || request.applicantName],
+      ['NIS / NISN', `${request.formData?.nis || '-'} / ${request.formData?.nisn || '-'}`],
+      ['Kelas / Jurusan', `${request.formData?.kelas || '-'} (${request.formData?.jurusan || '-'})`],
+      ['Keperluan', request.formData?.keperluan || 'Administrasi Tata Usaha Sekolah'],
     ];
 
     dataRows.forEach(([lbl, val]) => {
@@ -270,12 +287,38 @@ export const PdfGenerator = {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(settings.headmasterName, 130, y);
+    doc.text(settings.headmasterName || 'Drs. H. Gt. Ridwan Syahrani', 130, y);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
-    doc.text(`NIP. ${settings.headmasterNIP}`, 130, y + 5);
+    doc.text(`NIP. ${settings.headmasterNIP || '19670512 199403 1 008'}`, 130, y + 5);
 
+    return doc;
+  },
+
+  /**
+   * Returns Blob URL for Official Letter PDF preview modal
+   */
+  async getOfficialLetterPdfBlobUrl(
+    request: SubmissionRequest,
+    template: LetterTemplate | undefined,
+    settings: SchoolSettings
+  ): Promise<string> {
+    const doc = await this.buildOfficialLetterDoc(request, template, settings);
+    const blob = doc.output('blob');
+    return URL.createObjectURL(blob);
+  },
+
+  /**
+   * Downloads Official School Letter PDF (Surat Resmi PDF)
+   */
+  async generateOfficialLetterPdf(
+    request: SubmissionRequest,
+    template: LetterTemplate | undefined,
+    settings: SchoolSettings
+  ): Promise<void> {
+    const doc = await this.buildOfficialLetterDoc(request, template, settings);
     doc.save(`Surat_Resmi_${request.requestNumber}.pdf`);
   },
 };
+
