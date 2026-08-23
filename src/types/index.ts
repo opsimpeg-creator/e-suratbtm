@@ -140,6 +140,7 @@ export interface SchoolSettings {
   classes?: string[];
   majors?: string[];
   operatingHours?: OperatingHours;
+  appScriptWebAppUrl?: string;
 }
 
 export interface AuditLog {
