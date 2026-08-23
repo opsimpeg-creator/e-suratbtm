@@ -354,70 +354,146 @@ function handleRoute(action, params) {
   }
 
   if (action === 'submitRequest' || action === 'saveSubmission') {
-    const sheet = ss.getSheetByName('Permohonan');
-    if (!sheet) return { success: false, message: "Sheet Permohonan tidak ditemukan" };
-    var formData = params.formData || {};
-
-    // Auto Upload File Lampiran ke Google Drive
-    if (params.fileData && params.fileName) {
-      try {
-        var folderName = 'Lampiran E-Surat TU';
-        var folders = DriveApp.getFoldersByName(folderName);
-        var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
-
-        var base64Str = params.fileData.indexOf(',') > -1 ? params.fileData.split(',')[1] : params.fileData;
-        var bytes = Utilities.base64Decode(base64Str);
-        var blob = Utilities.newBlob(bytes, params.fileType || 'application/octet-stream', params.fileName);
-        var file = folder.createFile(blob);
-        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
-        formData['DriveLink_Lampiran'] = file.getUrl();
-      } catch (errDrive) {
-        formData['DriveError'] = errDrive.toString();
+    var lock = LockService.getScriptLock();
+    var hasLock = false;
+    try {
+      // Kunci antrean LockService hingga 30 detik untuk mencegah nomor ganda saat ada banyak ajuan bersamaan
+      hasLock = lock.tryLock(30000);
+      if (!hasLock) {
+        return { success: false, message: "Server sedang sibuk memproses antrean penomoran. Silakan coba beberapa saat lagi." };
       }
-    }
 
-    const data = sheet.getDataRange().getValues();
-    var updated = false;
+      const sheet = ss.getSheetByName('Permohonan');
+      if (!sheet) return { success: false, message: "Sheet Permohonan tidak ditemukan" };
+      var formData = params.formData || {};
 
-    for (var i = 1; i < data.length; i++) {
-      var rowId = String(data[i][0]);
-      var rowReqNum = String(data[i][1]);
-      if ((params.id && rowId === String(params.id)) || (params.requestNumber && rowReqNum === String(params.requestNumber))) {
-        sheet.getRange(i + 1, 1, 1, 10).setValues([[
-          params.id || rowId,
-          params.requestNumber || rowReqNum,
-          params.applicantName || data[i][2],
-          params.applicantEmail || data[i][3],
-          params.applicantPhone || data[i][4],
-          params.letterTypeName || data[i][5],
-          params.status || data[i][6] || 'Menunggu',
+      // Auto Upload File Lampiran ke Google Drive
+      if (params.fileData && params.fileName) {
+        try {
+          var folderName = 'Lampiran E-Surat TU';
+          var folders = DriveApp.getFoldersByName(folderName);
+          var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+
+          var base64Str = params.fileData.indexOf(',') > -1 ? params.fileData.split(',')[1] : params.fileData;
+          var bytes = Utilities.base64Decode(base64Str);
+          var blob = Utilities.newBlob(bytes, params.fileType || 'application/octet-stream', params.fileName);
+          var file = folder.createFile(blob);
+          file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+          formData['DriveLink_Lampiran'] = file.getUrl();
+        } catch (errDrive) {
+          formData['DriveError'] = errDrive.toString();
+        }
+      }
+
+      const data = sheet.getDataRange().getValues();
+      var updated = false;
+      var existingRowIndex = -1;
+      var currentYearMonth = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Jakarta', 'yyyyMM');
+      var prefix = 'SRT-' + currentYearMonth + '-';
+      var usedNumbers = {};
+
+      for (var i = 1; i < data.length; i++) {
+        var rowId = String(data[i][0]);
+        var rowReqNum = String(data[i][1]).trim();
+        if ((params.id && rowId === String(params.id)) || (params.requestNumber && rowReqNum === String(params.requestNumber))) {
+          existingRowIndex = i + 1;
+        }
+
+        if (rowReqNum.indexOf(prefix) === 0) {
+          var numPart = parseInt(rowReqNum.substring(prefix.length), 10);
+          if (!isNaN(numPart) && numPart > 0) {
+            usedNumbers[numPart] = true;
+          }
+        }
+      }
+
+      // OPSI B: Cari nomor integer terkecil (>= 1) yang belum terpakai / bolong pada bulan ini
+      var assignedRequestNumber = params.requestNumber;
+      if (existingRowIndex === -1 || !assignedRequestNumber || assignedRequestNumber === 'AUTO' || assignedRequestNumber.indexOf('SRT-') !== 0) {
+        var seq = 1;
+        while (usedNumbers[seq]) {
+          seq++;
+        }
+        var seqStr = ('0000' + seq).slice(-4);
+        assignedRequestNumber = prefix + seqStr;
+      }
+
+      if (existingRowIndex > 0) {
+        sheet.getRange(existingRowIndex, 1, 1, 10).setValues([[
+          params.id || data[existingRowIndex - 1][0],
+          assignedRequestNumber,
+          params.applicantName || data[existingRowIndex - 1][2],
+          params.applicantEmail || data[existingRowIndex - 1][3],
+          params.applicantPhone || data[existingRowIndex - 1][4],
+          params.letterTypeName || data[existingRowIndex - 1][5],
+          params.status || data[existingRowIndex - 1][6] || 'Menunggu',
           typeof formData === 'object' ? JSON.stringify(formData) : String(formData),
-          data[i][8] || new Date().toISOString(),
-          params.officialLetterNumber || data[i][9] || ''
+          data[existingRowIndex - 1][8] || new Date().toISOString(),
+          params.officialLetterNumber || data[existingRowIndex - 1][9] || ''
         ]]);
         updated = true;
-        break;
+      } else {
+        var newId = params.id || ('sub-' + Date.now());
+        const row = [
+          newId,
+          assignedRequestNumber,
+          params.applicantName || '',
+          params.applicantEmail || '',
+          params.applicantPhone || '',
+          params.letterTypeName || '',
+          params.status || 'Menunggu',
+          typeof formData === 'object' ? JSON.stringify(formData) : String(formData),
+          new Date().toISOString(),
+          params.officialLetterNumber || ''
+        ];
+        sheet.appendRow(row);
+      }
+
+      logActivity(ss, 'Sistem Public', 'SUBMIT_REQUEST', 'Permohonan: ' + assignedRequestNumber + ' (Opsi B LockService)');
+      return { success: true, requestNumber: assignedRequestNumber, id: params.id || (existingRowIndex > 0 ? data[existingRowIndex - 1][0] : newId) };
+    } catch (errLock) {
+      return { success: false, error: errLock.toString() };
+    } finally {
+      if (hasLock) {
+        try { lock.releaseLock(); } catch(e){}
       }
     }
+  }
 
-    if (!updated) {
-      const row = [
-        params.id || 'sub-' + Date.now(),
-        params.requestNumber,
-        params.applicantName,
-        params.applicantEmail,
-        params.applicantPhone,
-        params.letterTypeName,
-        params.status || 'Menunggu',
-        typeof formData === 'object' ? JSON.stringify(formData) : String(formData),
-        new Date().toISOString(),
-        params.officialLetterNumber || ''
-      ];
-      sheet.appendRow(row);
+  if (action === 'getNextRequestNumber' || action === 'getNextAvailableNumber') {
+    var lockSeq = LockService.getScriptLock();
+    var hasLockSeq = false;
+    try {
+      hasLockSeq = lockSeq.tryLock(15000);
+      const sheet = ss.getSheetByName('Permohonan');
+      if (!sheet) return { success: false, message: "Sheet Permohonan tidak ditemukan" };
+      var currentYearMonth = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Jakarta', 'yyyyMM');
+      var prefix = 'SRT-' + currentYearMonth + '-';
+      var data = sheet.getDataRange().getValues();
+      var usedNumbers = {};
+      for (var i = 1; i < data.length; i++) {
+        var rowReqNum = String(data[i][1]).trim();
+        if (rowReqNum.indexOf(prefix) === 0) {
+          var numPart = parseInt(rowReqNum.substring(prefix.length), 10);
+          if (!isNaN(numPart) && numPart > 0) {
+            usedNumbers[numPart] = true;
+          }
+        }
+      }
+      var seq = 1;
+      while (usedNumbers[seq]) {
+        seq++;
+      }
+      var seqStr = ('0000' + seq).slice(-4);
+      return { success: true, nextNumber: prefix + seqStr, seq: seq, prefix: prefix };
+    } catch (err) {
+      return { success: false, error: err.toString() };
+    } finally {
+      if (hasLockSeq) {
+        try { lockSeq.releaseLock(); } catch(e){}
+      }
     }
-    logActivity(ss, 'Sistem Public', 'SUBMIT_REQUEST', 'Permohonan: ' + params.requestNumber);
-    return { success: true, requestNumber: params.requestNumber };
   }
 
   if (action === 'updateStatus') {
@@ -626,10 +702,28 @@ function logActivity(ss, user, action, details) {
 `;
   },
 
-  sendSubmissionToAppsScript: async function (submission: any): Promise<boolean> {
+  getNextAvailableNumberFromAppsScript: async function (): Promise<string | null> {
     const settings = StorageService.getSettings();
     const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
-    if (!url) return false;
+    if (!url) return null;
+    try {
+      const resp = await fetch(`${url}?action=getNextRequestNumber`, { method: 'GET' });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.success && data.nextNumber) {
+          return String(data.nextNumber);
+        }
+      }
+    } catch (e) {
+      // ignore network errors / CORS fallback
+    }
+    return null;
+  },
+
+  sendSubmissionToAppsScript: async function (submission: any): Promise<{ success: boolean; requestNumber?: string }> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    if (!url) return { success: false };
 
     try {
       let fileData: string | undefined = undefined;
@@ -664,18 +758,36 @@ function logActivity(ss, user, action, details) {
         fileType,
       };
 
-      await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify(payload),
-        mode: 'no-cors',
-      });
-      return true;
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+          },
+          body: JSON.stringify(payload),
+        });
+        if (response.ok) {
+          const resJson = await response.json();
+          if (resJson.success && resJson.requestNumber) {
+            return { success: true, requestNumber: resJson.requestNumber };
+          }
+        }
+      } catch (postErr) {
+        // Fallback with no-cors if standard POST fails CORS
+        await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+          },
+          body: JSON.stringify(payload),
+          mode: 'no-cors',
+        });
+      }
+
+      return { success: true, requestNumber: submission.requestNumber };
     } catch (err) {
       console.warn('Post to Google Apps Script error:', err);
-      return false;
+      return { success: false };
     }
   },
 

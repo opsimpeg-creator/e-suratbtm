@@ -149,7 +149,7 @@ export const SubmitRequestModal: React.FC<SubmitRequestModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -162,29 +162,27 @@ export const SubmitRequestModal: React.FC<SubmitRequestModalProps> = ({
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      try {
-        const newReq = StorageService.createSubmission({
-          letterTypeId: selectedType.id,
-          letterTypeName: selectedType.name,
-          applicantName,
-          applicantEmail,
-          applicantPhone,
-          applicantRole,
-          formData,
-          uploadedFiles,
-        });
+    try {
+      const newReq = await StorageService.createSubmissionAsync({
+        letterTypeId: selectedType.id,
+        letterTypeName: selectedType.name,
+        applicantName,
+        applicantEmail,
+        applicantPhone,
+        applicantRole,
+        formData,
+        uploadedFiles,
+      });
 
-        // Clear draft
-        localStorage.removeItem(`tu_draft_${selectedType.id}`);
+      // Clear draft
+      localStorage.removeItem(`tu_draft_${selectedType.id}`);
 
-        setIsSubmitting(false);
-        onSuccess(newReq);
-      } catch (err: any) {
-        setIsSubmitting(false);
-        setErrorMsg('Gagal mengirimkan permohonan: ' + err.message);
-      }
-    }, 1000);
+      setIsSubmitting(false);
+      onSuccess(newReq);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      setErrorMsg('Gagal mengirimkan permohonan: ' + err.message);
+    }
   };
 
   return (

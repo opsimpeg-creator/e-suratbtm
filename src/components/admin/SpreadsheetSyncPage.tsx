@@ -219,7 +219,7 @@ export const SpreadsheetSyncPage: React.FC<SpreadsheetSyncPageProps> = ({ settin
             <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Backend Code Generator</span>
             <h3 className="text-lg font-extrabold text-slate-900">Kode Generator Code.gs Google Apps Script</h3>
             <p className="text-xs text-slate-500">
-              Kode ini otomatis mengkonfigurasi 12 sheet database (termasuk <b>MasterKelas</b> & <b>MasterJurusan</b>), REST API endpoints, dan penomoran otomatis.
+              Kode ini otomatis mengkonfigurasi 12 sheet database, REST API endpoints, <b>Opsi B Auto-Fill Nomor Bolong</b>, dan <b>LockService</b> (anti nomor kembar/ganda).
             </p>
           </div>
 

@@ -123,7 +123,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({ settings }) => {
           <span>Layanan Informasi & Helpdesk TU</span>
         </span>
         <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-          Kontak & Pengaduan Layanan E-Surat
+          Kontak & Pengaduan
         </h1>
         <p className="text-xs sm:text-sm text-slate-600 max-w-xl mx-auto font-medium leading-relaxed">
           Sampaikan kendala pengajuan surat, perbaikan data, atau pertanyaan seputar layanan Tata Usaha. Setiap laporan mendapat nomor tiket resmi.

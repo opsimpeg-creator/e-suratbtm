@@ -542,6 +542,30 @@ export const StorageService = {
     this.addAuditLog('admin', 'CLEAR_SUBMISSIONS', 'Mengosongkan seluruh data permohonan di aplikasi lokal dan Firebase.');
   },
 
+  calculateNextRequestNumber(submissionsList?: SubmissionRequest[]): string {
+    const submissions = submissionsList || this.getSubmissions();
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '').slice(0, 6); // Format YYYYMM (misal: 202608)
+    const prefix = `SRT-${dateStr}-`;
+    const usedNums = new Set<number>();
+
+    submissions.forEach((s) => {
+      if (s.requestNumber && s.requestNumber.startsWith(prefix)) {
+        const numPart = parseInt(s.requestNumber.replace(prefix, ''), 10);
+        if (!isNaN(numPart) && numPart > 0) {
+          usedNums.add(numPart);
+        }
+      }
+    });
+
+    // OPSI B: Cari nomor integer terkecil (1, 2, 3, ...) yang belum terpakai / bolong
+    let seq = 1;
+    while (usedNums.has(seq)) {
+      seq++;
+    }
+
+    return `${prefix}${String(seq).padStart(4, '0')}`;
+  },
+
   createSubmission(data: {
     letterTypeId: string;
     letterTypeName: string;
@@ -551,11 +575,10 @@ export const StorageService = {
     applicantRole: 'siswa' | 'alumni' | 'orang_tua' | 'lainnya';
     formData: Record<string, any>;
     uploadedFiles?: Record<string, { fileName: string; fileUrl: string; fileSize?: string }>;
+    customRequestNumber?: string;
   }): SubmissionRequest {
     const submissions = this.getSubmissions();
-    const countToday = submissions.filter(s => s.createdAt.startsWith(new Date().toISOString().split('T')[0])).length + 1;
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '').slice(0, 6);
-    const requestNumber = `SRT-${dateStr}-${String(countToday).padStart(4, '0')}`;
+    const requestNumber = data.customRequestNumber || this.calculateNextRequestNumber(submissions);
 
     const newRequest: SubmissionRequest = {
       id: 'sub-' + Date.now(),
@@ -593,6 +616,56 @@ export const StorageService = {
         console.warn('Apps Script sync background:', err);
       });
     });
+
+    return newRequest;
+  },
+
+  async createSubmissionAsync(data: {
+    letterTypeId: string;
+    letterTypeName: string;
+    applicantName: string;
+    applicantEmail: string;
+    applicantPhone: string;
+    applicantRole: 'siswa' | 'alumni' | 'orang_tua' | 'lainnya';
+    formData: Record<string, any>;
+    uploadedFiles?: Record<string, { fileName: string; fileUrl: string; fileSize?: string }>;
+  }): Promise<SubmissionRequest> {
+    // 1. Coba periksa apakah nomor berikutnya bisa dialokasikan langsung dari Google Apps Script LockService
+    let allocatedNumber: string | undefined = undefined;
+    try {
+      const { AppsScriptService } = await import('./appsScript');
+      const nextNumFromSheet = await AppsScriptService.getNextAvailableNumberFromAppsScript();
+      if (nextNumFromSheet) {
+        allocatedNumber = nextNumFromSheet;
+      }
+    } catch (e) {
+      // fallback to local calculation
+    }
+
+    // 2. Buat objek submission
+    const newRequest = this.createSubmission({
+      ...data,
+      customRequestNumber: allocatedNumber,
+    });
+
+    // 3. Kirim ke Apps Script dan update jika nomor dikonfirmasi oleh Apps Script LockService
+    try {
+      const { AppsScriptService } = await import('./appsScript');
+      const res = await AppsScriptService.sendSubmissionToAppsScript(newRequest);
+      if (res.success && res.requestNumber && res.requestNumber !== newRequest.requestNumber) {
+        newRequest.requestNumber = res.requestNumber;
+        newRequest.qrVerificationCode = `VERIF-${res.requestNumber}-${Math.floor(1000 + Math.random() * 9000)}`;
+        const list = this.getSubmissions();
+        const idx = list.findIndex((s) => s.id === newRequest.id);
+        if (idx !== -1) {
+          list[idx] = newRequest;
+          setStored(KEYS.SUBMISSIONS, list);
+          saveSubmissionToFirebase(newRequest);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
 
     return newRequest;
   },

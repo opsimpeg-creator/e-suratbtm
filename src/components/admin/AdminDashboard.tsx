@@ -93,7 +93,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span>Sistem Tata Usaha Terintegrasi Google Spreadsheet</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            Dashboard Layanan E-Surat TU
+            Dashboard Layanan LAPIS SMAKTUDI
           </h2>
           <p className="text-xs sm:text-sm text-blue-100 max-w-xl">
             Pantau permohonan surat siswa & alumni, verifikasi ijazah, kelola template resmi, dan sinkronkan data secara real-time.
