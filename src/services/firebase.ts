@@ -217,11 +217,27 @@ export function subscribeToFirebase(callback: (data: Partial<{
     collection(db, COLLECTIONS.LETTER_TYPES),
     (snap) => {
       if (!snap.empty) {
-        const dummyLetterTypeIds = new Set(['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6']);
+        const hasSpreadsheetLetterTypes = snap.docs.some(
+          (d) => d.id !== 'lt-1' && d.id !== 'lt-2' && d.id !== 'lt-3' && d.id !== 'lt-4' && d.id !== 'lt-5' && d.id !== 'lt-6'
+        );
+        const dummyLetterTypeIds = new Set(
+          hasSpreadsheetLetterTypes
+            ? ['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6']
+            : ['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6']
+        );
+
+        // Auto-cleanup dummy / obsolete letter types from Firestore
+        snap.docs.forEach((docSnapshot) => {
+          if (dummyLetterTypeIds.has(docSnapshot.id)) {
+            deleteDoc(doc(db, COLLECTIONS.LETTER_TYPES, docSnapshot.id)).catch(() => {});
+          }
+        });
+
         const letterTypes = snap.docs
           .map((d) => d.data() as LetterType)
           .filter((lt) => !dummyLetterTypeIds.has(lt.id));
         if (letterTypes.length > 0) {
+          letterTypes.sort((a, b) => (a.order || 0) - (b.order || 0));
           callback({ letterTypes });
         }
       }
@@ -234,14 +250,23 @@ export function subscribeToFirebase(callback: (data: Partial<{
     (snap) => {
       if (!snap.empty) {
         const dummyFieldIds = new Set([
-          'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108',
+          'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108', 'f-109',
           'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
           'f-301', 'f-302', 'f-303', 'f-304', 'f-305'
         ]);
+
+        snap.docs.forEach((docSnapshot) => {
+          const data = docSnapshot.data() as FormField;
+          if (dummyFieldIds.has(docSnapshot.id) || ['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(data?.letterTypeId)) {
+            deleteDoc(doc(db, COLLECTIONS.FORM_FIELDS, docSnapshot.id)).catch(() => {});
+          }
+        });
+
         const formFields = snap.docs
           .map((d) => d.data() as FormField)
-          .filter((ff) => !dummyFieldIds.has(ff.id) && !['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(ff.letterTypeId));
+          .filter((ff) => !dummyFieldIds.has(ff.id) && !['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(ff.letterTypeId));
         if (formFields.length > 0) {
+          formFields.sort((a, b) => (a.order || 0) - (b.order || 0));
           callback({ formFields });
         }
       }
@@ -417,6 +442,31 @@ export async function saveLetterTypeToFirebase(lt: LetterType): Promise<void> {
   }
 }
 
+export async function replaceLetterTypesInFirebase(types: LetterType[]): Promise<void> {
+  if (isQuotaExceeded) return;
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.LETTER_TYPES));
+    const newIds = new Set(types.map((t) => t.id));
+    const batch = writeBatch(db);
+
+    // Delete any documents not in the new dataset
+    snap.docs.forEach((docSnapshot) => {
+      if (!newIds.has(docSnapshot.id)) {
+        batch.delete(docSnapshot.ref);
+      }
+    });
+
+    // Upsert all current letter types
+    types.forEach((t) => {
+      batch.set(doc(db, COLLECTIONS.LETTER_TYPES, t.id), cleanForFirestore(t));
+    });
+
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError('replaceLetterTypesInFirebase', err);
+  }
+}
+
 export async function deleteLetterTypeFromFirebase(id: string): Promise<void> {
   if (isQuotaExceeded) return;
   try {
@@ -444,17 +494,33 @@ export async function deleteFormFieldFromFirebase(id: string): Promise<void> {
   }
 }
 
-export async function saveFormFieldsToFirebase(fields: FormField[]): Promise<void> {
+export async function replaceFormFieldsInFirebase(fields: FormField[]): Promise<void> {
   if (isQuotaExceeded) return;
   try {
+    const snap = await getDocs(collection(db, COLLECTIONS.FORM_FIELDS));
+    const newIds = new Set(fields.map((f) => f.id));
     const batch = writeBatch(db);
+
+    // Delete any documents not in the new fields list
+    snap.docs.forEach((docSnapshot) => {
+      if (!newIds.has(docSnapshot.id)) {
+        batch.delete(docSnapshot.ref);
+      }
+    });
+
+    // Upsert all current form fields
     fields.forEach((f) => {
       batch.set(doc(db, COLLECTIONS.FORM_FIELDS, f.id), cleanForFirestore(f), { merge: true });
     });
+
     await batch.commit();
   } catch (err) {
-    handleFirestoreError('saveFormFieldsToFirebase', err);
+    handleFirestoreError('replaceFormFieldsInFirebase', err);
   }
+}
+
+export async function saveFormFieldsToFirebase(fields: FormField[]): Promise<void> {
+  return replaceFormFieldsInFirebase(fields);
 }
 
 export async function saveTemplateToFirebase(template: LetterTemplate): Promise<void> {

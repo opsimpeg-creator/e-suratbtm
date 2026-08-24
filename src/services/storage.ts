@@ -32,8 +32,10 @@ import {
   replaceSubmissionsInFirebase,
   deleteSubmissionFromFirebase,
   saveLetterTypeToFirebase,
+  replaceLetterTypesInFirebase,
   deleteLetterTypeFromFirebase,
   saveFormFieldsToFirebase,
+  replaceFormFieldsInFirebase,
   saveSingleFormFieldToFirebase,
   deleteFormFieldFromFirebase,
   saveTemplateToFirebase,
@@ -377,14 +379,44 @@ export const StorageService = {
   getLetterTypes(): LetterType[] {
     const list = getStored<LetterType[]>(KEYS.LETTER_TYPES, []);
     if (list && list.length > 0) {
-      return list;
+      // Filter out obsolete dummy IDs if custom / spreadsheet-synced letter types exist
+      const hasSpreadsheetLetterTypes = list.some(
+        (t) => t.id !== 'lt-1' && t.id !== 'lt-2' && t.id !== 'lt-3' && t.id !== 'lt-4' && t.id !== 'lt-5' && t.id !== 'lt-6'
+      );
+      const dummyLetterTypeIds = new Set(
+        hasSpreadsheetLetterTypes ? ['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'] : ['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6']
+      );
+
+      // Deduplicate by code if any duplicates exist (e.g. SKAS with lt-1 and lt-1787536998956)
+      const seenCodes = new Set<string>();
+      const deduped: LetterType[] = [];
+      for (const t of list) {
+        if (dummyLetterTypeIds.has(t.id)) continue;
+        const codeKey = (t.code || t.name).trim().toUpperCase();
+        if (seenCodes.has(codeKey)) continue;
+        seenCodes.add(codeKey);
+        deduped.push(t);
+      }
+
+      if (deduped.length > 0) {
+        deduped.sort((a, b) => (a.order || 0) - (b.order || 0));
+        return deduped;
+      }
     }
     // If local cache is totally empty and not yet synced from spreadsheet, fallback to INITIAL_LETTER_TYPES (or empty)
     return INITIAL_LETTER_TYPES.filter((t) => t.code === 'SKAS');
   },
   saveLetterTypes(types: LetterType[]): void {
-    setStored(KEYS.LETTER_TYPES, types);
-    types.forEach((t) => saveLetterTypeToFirebase(t));
+    // Filter out dummy/obsolete types
+    const hasSpreadsheetLetterTypes = types.some(
+      (t) => t.id !== 'lt-1' && t.id !== 'lt-2' && t.id !== 'lt-3' && t.id !== 'lt-4' && t.id !== 'lt-5' && t.id !== 'lt-6'
+    );
+    const dummyLetterTypeIds = new Set(
+      hasSpreadsheetLetterTypes ? ['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'] : ['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6']
+    );
+    const cleanTypes = types.filter((t) => !dummyLetterTypeIds.has(t.id));
+    setStored(KEYS.LETTER_TYPES, cleanTypes);
+    replaceLetterTypesInFirebase(cleanTypes);
   },
   addLetterType(newType: Omit<LetterType, 'id'>): LetterType {
     const types = this.getLetterTypes();
@@ -440,11 +472,11 @@ export const StorageService = {
   getFormFields(): FormField[] {
     const list = getStored<FormField[]>(KEYS.FORM_FIELDS, []);
     const dummyFieldIds = new Set([
-      'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108',
+      'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108', 'f-109',
       'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
       'f-301', 'f-302', 'f-303', 'f-304', 'f-305'
     ]);
-    return list.filter((f) => !dummyFieldIds.has(f.id) && !['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
+    return list.filter((f) => !dummyFieldIds.has(f.id) && !['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
   },
   getFieldsForLetterType(letterTypeId: string): FormField[] {
     const letterTypes = this.getLetterTypes();
@@ -462,16 +494,16 @@ export const StorageService = {
   },
   async saveFormFields(fields: FormField[]): Promise<void> {
     const dummyFieldIds = new Set([
-      'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108',
+      'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108', 'f-109',
       'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
       'f-301', 'f-302', 'f-303', 'f-304', 'f-305'
     ]);
-    const cleanFields = fields.filter((f) => !dummyFieldIds.has(f.id) && !['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
+    const cleanFields = fields.filter((f) => !dummyFieldIds.has(f.id) && !['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
     setStored(KEYS.FORM_FIELDS, cleanFields);
     // Non-blocking sync to Firebase
     Promise.resolve().then(async () => {
       try {
-        await saveFormFieldsToFirebase(cleanFields);
+        await replaceFormFieldsInFirebase(cleanFields);
       } catch (e) {
         console.warn('Firebase form fields sync notice:', e);
       }

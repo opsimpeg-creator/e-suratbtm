@@ -359,6 +359,23 @@ function handleRoute(action, params) {
     const letterTypeId = String(params.letterTypeId || '').trim();
     const letterTypeCode = String(params.letterTypeCode || '').trim();
     const items = params.items || params.fields || [];
+
+    // Pastikan header baris 1 di sheet FieldSurat selalu lengkap 10 kolom
+    var expectedFsHeaders = ['ID', 'JenisSuratID', 'Label', 'Name', 'Type', 'Required', 'Urutan', 'Placeholder', 'PesanBantuan', 'OpsiPilihan'];
+    var currentHeaderRange = sheet.getRange(1, 1, 1, 10);
+    var currentHeaders = currentHeaderRange.getValues()[0];
+    var needHeaderFix = false;
+    for (var h = 0; h < expectedFsHeaders.length; h++) {
+      if (!currentHeaders[h] || String(currentHeaders[h]).trim() === '') {
+        needHeaderFix = true;
+        break;
+      }
+    }
+    if (needHeaderFix) {
+      currentHeaderRange.setValues([expectedFsHeaders]);
+      currentHeaderRange.setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+    }
+
     const data = sheet.getDataRange().getValues();
 
     // Hapus baris lama milik jenis surat ini secara aman dari bawah ke atas
@@ -796,6 +813,22 @@ function bootstrapSheets(ss) {
           sheet.appendRow(['mjr-' + (m + 1), defaultMajors[m].code, defaultMajors[m].name, 'Ya', m + 1]);
         }
       }
+    } else {
+      // Jika sheet FieldSurat sudah ada, periksa apakah header kolom 8-10 (Placeholder, PesanBantuan, OpsiPilihan) kosong
+      if (req.name === 'FieldSurat') {
+        var curH = sheet.getRange(1, 1, 1, 10).getValues()[0];
+        var needFix = false;
+        for (var h = 0; h < req.headers.length; h++) {
+          if (!curH[h] || String(curH[h]).trim() === '') {
+            needFix = true;
+            break;
+          }
+        }
+        if (needFix) {
+          sheet.getRange(1, 1, 1, req.headers.length).setValues([req.headers]);
+          sheet.getRange(1, 1, 1, req.headers.length).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+        }
+      }
     }
   });
 }
@@ -807,10 +840,22 @@ function getSheetDataAsJson(ss, sheetName) {
   if (data.length <= 1) return [];
   var headers = data[0];
   var result = [];
+
+  var defaultFieldSuratHeaders = ['ID', 'JenisSuratID', 'Label', 'Name', 'Type', 'Required', 'Urutan', 'Placeholder', 'PesanBantuan', 'OpsiPilihan'];
+
   for (var i = 1; i < data.length; i++) {
     var obj = {};
-    for (var j = 0; j < headers.length; j++) {
-      obj[headers[j]] = data[i][j];
+    for (var j = 0; j < data[i].length; j++) {
+      var headerKey = (headers[j] && String(headers[j]).trim() !== '') ? String(headers[j]).trim() : '';
+      if (!headerKey && sheetName === 'FieldSurat' && j < defaultFieldSuratHeaders.length) {
+        headerKey = defaultFieldSuratHeaders[j];
+      }
+      if (headerKey) {
+        obj[headerKey] = data[i][j];
+      }
+      if (sheetName === 'FieldSurat' && j === 9 && !obj['OpsiPilihan']) {
+        obj['OpsiPilihan'] = data[i][j];
+      }
     }
     result.push(obj);
   }
@@ -1360,6 +1405,7 @@ function logActivity(ss, user, action, details) {
     }
 
     if (rawFieldsList.length > 0) {
+      const currentFields = StorageService.getFormFields();
       const parsedFields: any[] = [];
       for (let idx = 0; idx < rawFieldsList.length; idx++) {
         const item = rawFieldsList[idx];
@@ -1375,20 +1421,40 @@ function logActivity(ss, user, action, details) {
 
         const rawReq = String(item.Required || item.required || 'TRUE').toUpperCase();
         const isReq = rawReq === 'TRUE' || rawReq === 'YA' || rawReq === '1';
-        const rawOpts = item.OpsiPilihan || item.Options || item.options || item.opsi;
+
+        // Check all possible places where options could be stored (including empty key `""` or column index 9)
+        const rawOpts = item.OpsiPilihan || item.Options || item.options || item.opsi || item[''] || (Array.isArray(item) ? item[9] : undefined);
         let parsedOpts: string[] | undefined = undefined;
         if (typeof rawOpts === 'string' && rawOpts.trim()) {
           parsedOpts = rawOpts.split(/[\n,]+/).map((o: string) => o.trim()).filter(Boolean);
         } else if (Array.isArray(rawOpts)) {
-          parsedOpts = rawOpts;
+          parsedOpts = rawOpts.map((o: any) => String(o).trim()).filter(Boolean);
+        }
+
+        const fieldName = String(item.Name || item.name || label.toLowerCase().replace(/[^a-z0-9]/g, '_'));
+        const fieldType = String(item.Type || item.type || 'text').toLowerCase();
+
+        // Preserve existing options if incoming options from spreadsheet is empty but field is dropdown/radio
+        const existingField = currentFields.find(
+          (f) => f.id === rawId || (f.letterTypeId === letterTypeId && f.name === fieldName)
+        );
+        if ((!parsedOpts || parsedOpts.length === 0) && existingField?.options && existingField.options.length > 0) {
+          parsedOpts = existingField.options;
+        }
+
+        // Also if field is 'kelas' and still has no options, provide default master classes from settings as fallback
+        if ((!parsedOpts || parsedOpts.length === 0) && (fieldName === 'kelas' || label.toLowerCase().includes('kelas')) && ['dropdown', 'radio'].includes(fieldType)) {
+          if (settings.classes && settings.classes.length > 0) {
+            parsedOpts = settings.classes;
+          }
         }
 
         parsedFields.push({
           id: rawId || `f-${idx + 1}`,
           letterTypeId,
           label,
-          name: String(item.Name || item.name || label.toLowerCase().replace(/[^a-z0-9]/g, '_')),
-          type: String(item.Type || item.type || 'text').toLowerCase(),
+          name: fieldName,
+          type: fieldType,
           required: isReq,
           order: Number(item.Urutan || item.order || (idx + 1)),
           placeholder: item.Placeholder || item.placeholder || undefined,
