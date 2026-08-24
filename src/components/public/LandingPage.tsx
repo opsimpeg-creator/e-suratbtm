@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { LetterType, SchoolSettings, SubmissionRequest } from '../../types';
+import { LetterIcon } from '../common/LetterIcon';
 import {
   FileText,
   Search,
@@ -238,7 +239,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className={`w-12 h-12 rounded-xl text-white flex items-center justify-center shadow-md ${type.color || 'bg-blue-600'}`}>
-                      {getIconComponent(type.iconName)}
+                      <LetterIcon iconName={type.iconName} className="w-6 h-6" />
                     </div>
                     <span className="bg-slate-100 text-slate-700 text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-slate-200">
                       Kode: {type.code}

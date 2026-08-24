@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LetterType, FormField, SubmissionRequest, SchoolSettings } from '../../types';
 import { StorageService } from '../../services/storage';
 import { AppsScriptService } from '../../services/appsScript';
+import { LetterIcon } from '../common/LetterIcon';
 import { X, Send, AlertCircle, FileText, CheckCircle2, Upload, Lock, ShieldAlert, Sparkles, Database } from 'lucide-react';
 
 interface SubmitRequestModalProps {
@@ -192,7 +193,7 @@ export const SubmitRequestModal: React.FC<SubmitRequestModalProps> = ({
         <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-6 flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center font-bold text-amber-300 text-lg border border-white/20">
-              <FileText className="w-6 h-6" />
+              <LetterIcon iconName={selectedType.iconName} className="w-6 h-6" />
             </div>
             <div>
               <span className="bg-blue-800 text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest">
