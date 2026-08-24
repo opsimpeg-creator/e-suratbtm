@@ -469,7 +469,54 @@ export const INITIAL_TEMPLATES: LetterTemplate[] = [
   },
 ];
 
-export const DEMO_SAMPLE_SUBMISSIONS: SubmissionRequest[] = [];
+export const DEMO_SAMPLE_SUBMISSIONS: SubmissionRequest[] = [
+  {
+    id: 'demo-sample-001',
+    requestNumber: 'SRT-CONTOH-0001',
+    letterTypeId: 'lt-1',
+    letterTypeName: 'Surat Keterangan Aktif Sekolah',
+    applicantName: 'Siswa Percontohan (Demo)',
+    applicantEmail: 'siswa.demo@smkn1batumandi.sch.id',
+    applicantPhone: '081234567890',
+    applicantRole: 'siswa',
+    status: 'Selesai',
+    formData: {
+      nama: 'Siswa Percontohan (Demo)',
+      nis: '20241001',
+      nisn: '0061234567',
+      kelas: 'XII (Dua Belas)',
+      jurusan: 'Teknik Jaringan Komputer dan Telekomunikasi (TJKT)',
+      nama_ortu: 'Bambang Sudarmo',
+      keperluan: 'Kelengkapan Berkas Beasiswa Pendidikan Prestasi & Administrasi',
+    },
+    qrVerificationCode: 'VERIF-SRT-CONTOH-0001-DEMO',
+    officialLetterNumber: '421.5/CONTOH-001/SMKN1BTM/2026',
+    officialLetterDate: '2026-08-01T08:00:00Z',
+    digitalSignatureApplied: true,
+    createdAt: '2026-08-01T07:30:00Z',
+    updatedAt: '2026-08-01T08:00:00Z',
+    timeline: [
+      {
+        status: 'Menunggu',
+        timestamp: '2026-08-01T07:30:00Z',
+        actor: 'Sistem Publik',
+        note: 'Permohonan surat contoh berhasil dikirim ke sistem.',
+      },
+      {
+        status: 'Diproses',
+        timestamp: '2026-08-01T07:45:00Z',
+        actor: 'Staf TU SMKN 1 Batumandi',
+        note: 'Permohonan telah diverifikasi dan disetujui oleh Petugas Tata Usaha.',
+      },
+      {
+        status: 'Selesai',
+        timestamp: '2026-08-01T08:00:00Z',
+        actor: 'Kepala Sekolah',
+        note: 'Surat resmi telah diterbitkan dengan Nomor: 421.5/CONTOH-001/SMKN1BTM/2026',
+      },
+    ],
+  },
+];
 
 // Initial submissions for real database starts empty so it only holds real data from user/spreadsheet
 export const INITIAL_SUBMISSIONS: SubmissionRequest[] = [];

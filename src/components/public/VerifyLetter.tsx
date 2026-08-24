@@ -183,13 +183,13 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
             <button
               type="button"
               onClick={() => {
-                const sampleCode = '8230/321/SMKN1-BM/2026';
+                const sampleCode = '421.5/CONTOH-001/SMKN1BTM/2026';
                 setQueryCode(sampleCode);
                 handleVerify(sampleCode);
               }}
               className="font-mono text-[11px] bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-blue-700 px-2.5 py-1 rounded-lg font-bold border border-slate-200 transition cursor-pointer"
             >
-              8230/321/SMKN1-BM/2026
+              421.5/CONTOH-001/SMKN1BTM/2026
             </button>
           </div>
         </div>
