@@ -312,7 +312,7 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
                         <button
                           type="button"
                           onClick={async () => {
-                            if (isHttp || verifiedRequest.formData?._isManualUpload) {
+                            if (docUrl) {
                               handleOpenPreview(docUrl, docName);
                             } else {
                               try {
@@ -323,7 +323,7 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
                                   fileUrl: blobUrl,
                                 });
                               } catch (e) {
-                                handleOpenPreview(docUrl, docName);
+                                console.error('Error previewing letter:', e);
                               }
                             }
                           }}
@@ -336,14 +336,14 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
                         <button
                           type="button"
                           onClick={async () => {
-                            if (isHttp || verifiedRequest.formData?._isManualUpload) {
+                            if (docUrl) {
                               handleDownloadFile(docUrl, docName);
                             } else {
                               try {
                                 const tpl = StorageService.getTemplateForLetterType(verifiedRequest.letterTypeId);
                                 await PdfGenerator.generateOfficialLetterPdf(verifiedRequest, tpl, settings);
                               } catch (e) {
-                                handleDownloadFile(docUrl, docName);
+                                console.error('Error downloading letter:', e);
                               }
                             }
                           }}
@@ -466,4 +466,3 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
     </div>
   );
 };
-

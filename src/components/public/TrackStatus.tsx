@@ -74,21 +74,15 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
   };
 
   const handleOpenOfficialLetterPreview = async (req: SubmissionRequest) => {
-    try {
-      const isManualOrHttp = req.issuedDocumentUrl && (
-        req.issuedDocumentUrl.startsWith('http://') || 
-        req.issuedDocumentUrl.startsWith('https://') || 
-        req.formData?._isManualUpload
+    if (req.issuedDocumentUrl) {
+      handleOpenPreview(
+        req.issuedDocumentUrl,
+        req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
       );
+      return;
+    }
 
-      if (isManualOrHttp && req.issuedDocumentUrl) {
-        handleOpenPreview(
-          req.issuedDocumentUrl,
-          req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
-        );
-        return;
-      }
-
+    try {
       const tpl = StorageService.getTemplateForLetterType(req.letterTypeId);
       const blobUrl = await PdfGenerator.getOfficialLetterPdfBlobUrl(req, tpl, settings);
       setPreviewModalFile({
@@ -97,41 +91,23 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
       });
     } catch (err) {
       console.error('Error generating preview:', err);
-      if (req.issuedDocumentUrl) {
-        handleOpenPreview(
-          req.issuedDocumentUrl,
-          req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
-        );
-      }
     }
   };
 
   const handleDownloadOfficialLetter = async (req: SubmissionRequest) => {
-    try {
-      const isManualOrHttp = req.issuedDocumentUrl && (
-        req.issuedDocumentUrl.startsWith('http://') || 
-        req.issuedDocumentUrl.startsWith('https://') || 
-        req.formData?._isManualUpload
+    if (req.issuedDocumentUrl) {
+      handleDownloadFile(
+        req.issuedDocumentUrl,
+        req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
       );
+      return;
+    }
 
-      if (isManualOrHttp && req.issuedDocumentUrl) {
-        handleDownloadFile(
-          req.issuedDocumentUrl,
-          req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
-        );
-        return;
-      }
-
+    try {
       const tpl = StorageService.getTemplateForLetterType(req.letterTypeId);
       await PdfGenerator.generateOfficialLetterPdf(req, tpl, settings);
     } catch (e) {
       console.error('Error downloading official letter:', e);
-      if (req.issuedDocumentUrl) {
-        handleDownloadFile(
-          req.issuedDocumentUrl,
-          req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
-        );
-      }
     }
   };
 
