@@ -145,11 +145,21 @@ export default function App() {
     window.addEventListener('tu_storage_updated', handleStorageUpdate);
     window.addEventListener('storage', handleStorageUpdate);
 
-    // Background polling from Google Apps Script if webAppUrl is configured
+    // Background polling from Google Apps Script / Google Spreadsheet
     let failedAttempts = 0;
     const triggerAppsScriptSync = () => {
       const currentSettings = StorageService.getSettings();
-      if (currentSettings.webAppUrl && failedAttempts < 3) {
+      if ((currentSettings.webAppUrl || currentSettings.spreadsheetId) && failedAttempts < 5) {
+        // Fetch freshest LetterTypes from sheet JenisSurat
+        AppsScriptService.fetchLetterTypesFromSpreadsheet(true)
+          .then((lRes) => {
+            if (lRes.success) {
+              refreshAllData();
+            }
+          })
+          .catch(() => {});
+
+        // Fetch submissions, complaints, fields, and master data
         AppsScriptService.fetchDataFromAppsScript(true)
           .then((res) => {
             if (res.success) {

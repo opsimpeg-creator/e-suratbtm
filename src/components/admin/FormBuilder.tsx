@@ -228,7 +228,13 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
   const handlePushFieldsToSpreadsheet = async () => {
     setIsSyncingFields(true);
     try {
-      const res = await AppsScriptService.syncAllFieldsToAppsScript();
+      // Sync only the fields for the currently selected letter type to prevent multiplying/duplication
+      const currentFields = StorageService.getFieldsForLetterType(currentTypeId);
+      const res = await AppsScriptService.syncLetterTypeFieldsToAppsScript(
+        currentTypeId,
+        activeLetterType?.code || currentTypeId,
+        currentFields
+      );
       setSaveSuccessNotice(res.message);
       setTimeout(() => setSaveSuccessNotice(null), 4500);
     } catch (e: any) {

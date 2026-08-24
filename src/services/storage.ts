@@ -81,6 +81,21 @@ if (typeof window !== 'undefined' && window.localStorage) {
         }
       }
     }
+
+    // Purge old mock default letter types if they haven't been configured/synced with spreadsheet
+    const rawTypes = localStorage.getItem(KEYS.LETTER_TYPES);
+    if (rawTypes) {
+      const parsed = JSON.parse(rawTypes);
+      if (Array.isArray(parsed)) {
+        // If it still contains the untouched 6 dummy types from original template, clean them up
+        const isOldDefaultMocks = parsed.length === 6 && parsed.some((t: any) => t.id === 'lt-6' && t.code === 'SKBP') && parsed.some((t: any) => t.id === 'lt-5' && t.code === 'PKL');
+        if (isOldDefaultMocks) {
+          // Keep only active registered types or reset to empty until fetched from spreadsheet
+          const onlyActiveCustom = parsed.filter((t: any) => !['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(t.id));
+          localStorage.setItem(KEYS.LETTER_TYPES, JSON.stringify(onlyActiveCustom));
+        }
+      }
+    }
   } catch (e) {
     // ignore
   }
@@ -343,7 +358,12 @@ export const StorageService = {
 
   // Letter Types
   getLetterTypes(): LetterType[] {
-    return getStored<LetterType[]>(KEYS.LETTER_TYPES, INITIAL_LETTER_TYPES);
+    const list = getStored<LetterType[]>(KEYS.LETTER_TYPES, []);
+    if (list && list.length > 0) {
+      return list;
+    }
+    // If local cache is totally empty and not yet synced from spreadsheet, fallback to INITIAL_LETTER_TYPES (or empty)
+    return INITIAL_LETTER_TYPES.filter((t) => t.code === 'SKAS');
   },
   saveLetterTypes(types: LetterType[]): void {
     setStored(KEYS.LETTER_TYPES, types);
@@ -404,7 +424,17 @@ export const StorageService = {
     return getStored<FormField[]>(KEYS.FORM_FIELDS, INITIAL_FORM_FIELDS);
   },
   getFieldsForLetterType(letterTypeId: string): FormField[] {
-    const fields = this.getFormFields().filter((f) => f.letterTypeId === letterTypeId);
+    const letterTypes = this.getLetterTypes();
+    const targetType = letterTypes.find((t) => t.id === letterTypeId || t.code === letterTypeId);
+    const targetId = targetType?.id || letterTypeId;
+    const targetCode = targetType?.code;
+
+    const fields = this.getFormFields().filter(
+      (f) =>
+        f.letterTypeId === targetId ||
+        (targetCode && f.letterTypeId === targetCode) ||
+        (letterTypeId && f.letterTypeId === letterTypeId)
+    );
     return fields.sort((a, b) => a.order - b.order);
   },
   async saveFormFields(fields: FormField[]): Promise<void> {

@@ -345,7 +345,7 @@ function handleRoute(action, params) {
         item.name || '',
         item.description || '',
         item.processingTimeDays || 1,
-        item.isActive !== false ? 'Ya' : 'Tidak',
+        item.isActive !== false && item.active !== false ? 'Ya' : 'Tidak',
         item.order || (k + 1)
       ]);
     }
@@ -353,16 +353,60 @@ function handleRoute(action, params) {
     return { success: true };
   }
 
+  if (action === 'saveLetterTypeFields') {
+    const sheet = ss.getSheetByName('FieldSurat');
+    if (!sheet) return { success: false, message: "Sheet FieldSurat tidak ditemukan" };
+    const letterTypeId = String(params.letterTypeId || '').trim();
+    const letterTypeCode = String(params.letterTypeCode || '').trim();
+    const items = params.items || params.fields || [];
+    const data = sheet.getDataRange().getValues();
+
+    // Hapus baris lama milik jenis surat ini secara aman dari bawah ke atas
+    for (var i = data.length - 1; i >= 1; i--) {
+      var rowTypeId = String(data[i][1]).trim();
+      if ((letterTypeId && rowTypeId === letterTypeId) || (letterTypeCode && rowTypeId === letterTypeCode)) {
+        sheet.deleteRow(i + 1);
+      }
+    }
+
+    // Tulis baris kolom terbaru (tanpa dobel)
+    for (var f = 0; f < items.length; f++) {
+      var itm = items[f];
+      sheet.appendRow([
+        itm.id || ('f-' + Date.now() + '-' + (f + 1)),
+        letterTypeId || letterTypeCode || '',
+        itm.label || '',
+        itm.name || '',
+        itm.type || 'text',
+        itm.required !== false && itm.required !== 'FALSE' ? 'TRUE' : 'FALSE',
+        itm.order || (f + 1),
+        itm.placeholder || '',
+        itm.helpText || '',
+        Array.isArray(itm.options) ? itm.options.join(', ') : (itm.options || '')
+      ]);
+    }
+    logActivity(ss, 'Admin', 'SAVE_LETTER_FIELDS', 'Perbarui ' + items.length + ' kolom untuk jenis surat ' + (letterTypeCode || letterTypeId));
+    return { success: true, count: items.length };
+  }
+
   if (action === 'saveFieldSurat') {
     const sheet = ss.getSheetByName('FieldSurat');
     if (!sheet) return { success: false, message: "Sheet FieldSurat tidak ditemukan" };
     const data = sheet.getDataRange().getValues();
     var updated = false;
+    var targetId = String(params.id || '').trim();
+    var targetTypeId = String(params.letterTypeId || '').trim();
+    var targetName = String(params.name || '').trim();
+
     for (var i = 1; i < data.length; i++) {
-      if (String(data[i][0]) === String(params.id) || (String(data[i][1]) === String(params.letterTypeId) && String(data[i][3]) === String(params.name))) {
+      var rowId = String(data[i][0]).trim();
+      var rowTypeId = String(data[i][1]).trim();
+      var rowName = String(data[i][3]).trim();
+
+      if ((targetId && rowId === targetId) || (targetTypeId && targetName && rowTypeId === targetTypeId && rowName === targetName)) {
         sheet.getRange(i + 1, 1, 1, 10).setValues([[
-          params.id,
-          params.letterTypeId || '',
+          params.id || rowId,
+          params.letterTypeId || rowTypeId,
           params.label || '',
           params.name || '',
           params.type || 'text',
@@ -1001,6 +1045,182 @@ function logActivity(ss, user, action, details) {
     }
   },
 
+  syncLetterTypeFieldsToAppsScript: async function (
+    letterTypeId: string,
+    letterTypeCode: string,
+    fields: any[]
+  ): Promise<{ success: boolean; message: string; count: number }> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+
+    if (!url) {
+      return {
+        success: false,
+        message: 'URL Web App Google Apps Script belum dikonfigurasi.',
+        count: fields.length,
+      };
+    }
+
+    try {
+      const payload = {
+        action: 'saveLetterTypeFields',
+        letterTypeId,
+        letterTypeCode,
+        fields: fields.map((f: any) => ({
+          id: f.id,
+          label: f.label,
+          name: f.name,
+          type: f.type || 'text',
+          required: f.required !== false,
+          order: f.order || 1,
+          placeholder: f.placeholder || '',
+          helpText: f.helpText || '',
+          options: f.options || [],
+        })),
+      };
+
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+        mode: 'no-cors',
+      });
+
+      return {
+        success: true,
+        message: `Berhasil memperbarui ${fields.length} kolom formulir jenis surat ${letterTypeCode || letterTypeId} di sheet FieldSurat!`,
+        count: fields.length,
+      };
+    } catch (err: any) {
+      console.warn('Sync letter type fields error:', err);
+      return {
+        success: false,
+        message: 'Gagal mengirim kolom formulir: ' + (err?.message || 'Koneksi gagal'),
+        count: 0,
+      };
+    }
+  },
+
+  fetchLetterTypesFromSpreadsheet: async function (forceSilent = false): Promise<{
+    success: boolean;
+    letterTypes: any[];
+    message: string;
+  }> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    let rawTypesList: any[] = [];
+    let source = '';
+
+    // 1. Try Web App API
+    if (url) {
+      try {
+        const resp = await fetch(`${url}?action=getAllData`);
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.success && Array.isArray(json.jenisSurat) && json.jenisSurat.length > 0) {
+            rawTypesList = json.jenisSurat;
+            source = 'Web App API';
+          }
+        }
+      } catch (e) {
+        // continue to GViz fallback
+      }
+    }
+
+    // 2. Fallback via GViz API directly on sheet=JenisSurat
+    if (rawTypesList.length === 0 && settings.spreadsheetId) {
+      try {
+        const gvizUrl = `https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}/gviz/tq?tqx=out:json&sheet=JenisSurat`;
+        const gvizRes = await fetch(gvizUrl);
+        if (gvizRes.ok) {
+          const text = await gvizRes.text();
+          const jsonText = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+          const gvizData = JSON.parse(jsonText);
+          if (gvizData?.table?.rows) {
+            rawTypesList = gvizData.table.rows.map((r: any) => {
+              const c = r.c || [];
+              return {
+                ID: c[0]?.v,
+                Kode: c[1]?.v,
+                NamaSurat: c[2]?.v,
+                Deskripsi: c[3]?.v,
+                LamaProsesHari: c[4]?.v,
+                StatusAktif: c[5]?.v,
+                Urutan: c[6]?.v,
+              };
+            });
+            if (rawTypesList.length > 0) source = 'Google Spreadsheet (GViz)';
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    if (rawTypesList.length > 0) {
+      const parsedTypes: any[] = [];
+      for (let idx = 0; idx < rawTypesList.length; idx++) {
+        const item = rawTypesList[idx];
+        const name = String(item.NamaSurat || item.name || item.Nama || '').trim();
+        const code = String(item.Kode || item.code || '').trim();
+        if (!name && !code) continue;
+
+        const rawStatus = String(item.StatusAktif || item.status || item.active || item.isActive || 'Ya').toLowerCase();
+        const isActive = rawStatus === 'ya' || rawStatus === 'true' || rawStatus === '1' || rawStatus === 'aktif';
+
+        const colorMap: Record<string, string> = {
+          SKAS: 'bg-blue-600',
+          SKA: 'bg-indigo-600',
+          SRB: 'bg-emerald-600',
+          SKBB: 'bg-amber-600',
+          PKL: 'bg-purple-600',
+          SKBP: 'bg-rose-600',
+        };
+
+        const iconMap: Record<string, string> = {
+          SKAS: 'FileText',
+          SKA: 'GraduationCap',
+          SRB: 'Award',
+          SKBB: 'FileCheck',
+          PKL: 'Briefcase',
+          SKBP: 'BookOpen',
+        };
+
+        const resolvedCode = code || `SRT-${idx + 1}`;
+        parsedTypes.push({
+          id: String(item.ID || item.id || `lt-${idx + 1}`),
+          code: resolvedCode,
+          name: name || `Surat ${resolvedCode}`,
+          description: String(item.Deskripsi || item.description || 'Layanan permohonan surat resmi tata usaha.'),
+          processingTimeDays: Number(item.LamaProsesHari || item.processingTimeDays || 1),
+          iconName: iconMap[resolvedCode] || 'FileText',
+          color: colorMap[resolvedCode] || 'bg-blue-600',
+          active: isActive,
+          order: Number(item.Urutan || item.order || (idx + 1)),
+          templateId: `tpl-${idx + 1}`,
+        });
+      }
+
+      if (parsedTypes.length > 0) {
+        parsedTypes.sort((a, b) => (a.order || 0) - (b.order || 0));
+        StorageService.saveLetterTypes(parsedTypes);
+        return {
+          success: true,
+          letterTypes: parsedTypes,
+          message: `Berhasil memuat ${parsedTypes.length} jenis surat langsung dari sheet JenisSurat (${source})!`,
+        };
+      }
+    }
+
+    return {
+      success: false,
+      letterTypes: StorageService.getLetterTypes(),
+      message: 'Tidak ditemukan data jenis surat baru di Spreadsheet JenisSurat.',
+    };
+  },
+
   syncAllFieldsToAppsScript: async function (fields?: any[]): Promise<{ success: boolean; message: string; count: number }> {
     const settings = StorageService.getSettings();
     const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
@@ -1491,6 +1711,13 @@ function logActivity(ss, user, action, details) {
       parsedComplaints.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       if (parsedComplaints.length > 0) {
         StorageService.saveComplaints(parsedComplaints);
+      }
+
+      // Fetch / Parse JenisSurat directly from Spreadsheet
+      try {
+        await this.fetchLetterTypesFromSpreadsheet(true);
+      } catch (errLetter) {
+        // ignore
       }
 
       // Fetch / Parse FieldSurat
