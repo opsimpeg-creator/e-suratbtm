@@ -30,6 +30,7 @@ interface TrackStatusProps {
   initialNumber?: string;
   settings: SchoolSettings;
   setActiveTab: (tab: string) => void;
+  onOpenSubmitModal?: (letterTypeId?: string) => void;
 }
 
 export const TrackStatus: React.FC<TrackStatusProps> = ({

@@ -449,7 +449,7 @@ export default function App() {
             {isAdminTab ? renderAdminContent() : renderPublicContent()}
           </main>
 
-          <Footer settings={settings} onOpenLogin={() => setIsLoginModalOpen(true)} />
+          <Footer settings={settings} setActiveTab={setActiveTab} onOpenLogin={() => setIsLoginModalOpen(true)} />
         </>
       )}
 
