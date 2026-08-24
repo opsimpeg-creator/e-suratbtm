@@ -927,8 +927,6 @@ function getSheetDataAsJson(ss, sheetName) {
   }
   return result;
 }
-  return result;
-}
 
 function logActivity(ss, user, action, details) {
   var sheet = ss.getSheetByName('Log');

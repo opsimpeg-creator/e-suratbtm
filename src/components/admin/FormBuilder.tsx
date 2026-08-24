@@ -212,29 +212,46 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
     if (targetIdx < 0 || targetIdx >= currentFields.length || isSaving) return;
 
-    // Swap order
-    const tempOrder = currentFields[idx].order;
-    currentFields[idx].order = currentFields[targetIdx].order;
-    currentFields[targetIdx].order = tempOrder;
+    // Swap actual array items
+    const [movedItem] = currentFields.splice(idx, 1);
+    currentFields.splice(targetIdx, 0, movedItem);
 
+    // Reassign clean 1-based sequential order to all fields for this letter type
+    const updatedTypeFields = currentFields.map((cf, i) => ({
+      ...cf,
+      order: i + 1,
+    }));
+
+    // Update inside all fields
     const allFields = StorageService.getFormFields();
-    currentFields.forEach((cf) => {
-      const i = allFields.findIndex((f) => f.id === cf.id);
-      if (i !== -1) allFields[i] = cf;
+    updatedTypeFields.forEach((uf) => {
+      const i = allFields.findIndex((f) => f.id === uf.id);
+      if (i !== -1) {
+        allFields[i] = uf;
+      }
+      StorageService.saveSingleFormField(uf);
     });
 
     setIsSaving(true);
     try {
       StorageService.saveFormFields(allFields);
 
-      const updatedFieldsForType = StorageService.getFieldsForLetterType(currentTypeId);
-      AppsScriptService.syncLetterTypeFieldsToAppsScript(
+      // Save directly to Google Spreadsheet via Apps Script API
+      const syncRes = await AppsScriptService.syncLetterTypeFieldsToAppsScript(
         currentTypeId,
         activeLetterType?.code || currentTypeId,
-        updatedFieldsForType
-      ).catch(() => {});
+        updatedTypeFields
+      );
 
       onRefresh();
+      if (syncRes && syncRes.success) {
+        setSaveSuccessNotice('Urutan kolom berhasil diperbarui & disimpan ke Spreadsheet');
+      } else {
+        setSaveSuccessNotice('Urutan kolom diperbarui secara lokal & tersimpan');
+      }
+      setTimeout(() => setSaveSuccessNotice(null), 3000);
+    } catch (err) {
+      console.error('Error reordering fields:', err);
     } finally {
       setIsSaving(false);
     }
