@@ -20,7 +20,10 @@ import {
   FileDown,
   Maximize2,
   Paperclip,
-  X
+  X,
+  ChevronDown,
+  ChevronUp,
+  History
 } from 'lucide-react';
 
 interface TrackStatusProps {
@@ -37,6 +40,7 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
   const [searchInput, setSearchInput] = useState(initialNumber);
   const [foundRequest, setFoundRequest] = useState<SubmissionRequest | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [showActivityLogs, setShowActivityLogs] = useState(false);
   const [previewModalFile, setPreviewModalFile] = useState<{ fileName: string; fileUrl: string; fileSize?: string } | null>(null);
 
   const base64ToBlobUrl = (dataUrl: string): string => {
@@ -111,63 +115,90 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
     }
   };
 
-  // Helper to construct complete and informative timeline history
-  const getRenderedTimeline = (req: SubmissionRequest) => {
-    const existing = req.timeline && req.timeline.length > 0 ? [...req.timeline] : [];
-    
-    // If no timeline exists, create initial
-    if (existing.length === 0) {
-      existing.push({
-        status: 'Menunggu',
-        timestamp: req.createdAt || new Date().toISOString(),
-        actor: 'Sistem Public',
-        note: 'Permohonan surat berhasil dikirim dan terdaftar di database.',
-      });
+  // Helper to construct structured 3-stage official workflow stepper
+  const getWorkflowSteps = (req: SubmissionRequest) => {
+    const isRejected = req.status === 'Ditolak';
+    const isSelesai = req.status === 'Selesai';
+    const isDiproses = req.status === 'Diproses';
+
+    // Find specific log events if present
+    const tMenunggu = req.timeline?.find((t) => t.status === 'Menunggu') || {
+      timestamp: req.createdAt,
+      actor: `${req.applicantName} (Pemohon)`,
+      note: 'Pengajuan permohonan berhasil terdaftar di sistem Tata Usaha.',
+    };
+
+    const tDiproses = req.timeline?.find((t) => t.status === 'Diproses') || {
+      timestamp: isSelesai || isDiproses ? (req.updatedAt || req.createdAt) : null,
+      actor: 'Petugas Tata Usaha',
+      note: req.processingNote || 'Dokumen telah diverifikasi dan disetujui untuk penomoran serta penerbitan.',
+    };
+
+    const tSelesai = req.timeline?.find((t) => t.status === 'Selesai') || {
+      timestamp: isSelesai ? (req.officialLetterDate || req.updatedAt || req.createdAt) : null,
+      actor: 'Tata Usaha / Kepala Sekolah',
+      note: `Surat resmi telah diterbitkan dengan Nomor: ${req.officialLetterNumber || '-'}`,
+    };
+
+    const tDitolak = req.timeline?.find((t) => t.status === 'Ditolak') || {
+      timestamp: req.updatedAt || req.createdAt,
+      actor: 'Petugas Tata Usaha',
+      note: req.rejectionReason || 'Permohonan ditolak karena kelengkapan data belum memenuhi syarat.',
+    };
+
+    if (isRejected) {
+      return [
+        {
+          key: 'step-1',
+          title: 'Pengajuan Diterima',
+          state: 'completed', // 'completed' | 'active' | 'pending' | 'rejected'
+          timestamp: tMenunggu.timestamp,
+          actor: tMenunggu.actor,
+          desc: tMenunggu.note,
+        },
+        {
+          key: 'step-rejected',
+          title: 'Permohonan Ditolak',
+          state: 'rejected',
+          timestamp: tDitolak.timestamp,
+          actor: tDitolak.actor,
+          desc: tDitolak.note,
+        },
+      ];
     }
 
-    // If status is Selesai but timeline only has initial or missing Selesai
-    if (req.status === 'Selesai') {
-      const hasDiproses = existing.some((t) => t.status === 'Diproses');
-      if (!hasDiproses) {
-        existing.push({
-          status: 'Diproses',
-          timestamp: req.updatedAt || req.createdAt,
-          actor: 'Staf TU',
-          note: 'Permohonan telah diverifikasi dan disetujui oleh Petugas Tata Usaha.',
-        });
-      }
-      const hasSelesai = existing.some((t) => t.status === 'Selesai');
-      if (!hasSelesai) {
-        existing.push({
-          status: 'Selesai',
-          timestamp: req.officialLetterDate || req.updatedAt || new Date().toISOString(),
-          actor: 'Tata Usaha SMKN 1 Batumandi',
-          note: `Surat resmi telah diterbitkan dengan Nomor: ${req.officialLetterNumber || '-'}`,
-        });
-      }
-    } else if (req.status === 'Diproses') {
-      const hasDiproses = existing.some((t) => t.status === 'Diproses');
-      if (!hasDiproses) {
-        existing.push({
-          status: 'Diproses',
-          timestamp: req.updatedAt || new Date().toISOString(),
-          actor: 'Staf TU',
-          note: req.processingNote || 'Permohonan sedang dalam proses pembuatan dan penandatanganan surat.',
-        });
-      }
-    } else if (req.status === 'Ditolak') {
-      const hasDitolak = existing.some((t) => t.status === 'Ditolak');
-      if (!hasDitolak) {
-        existing.push({
-          status: 'Ditolak',
-          timestamp: req.updatedAt || new Date().toISOString(),
-          actor: 'Tata Usaha',
-          note: req.rejectionReason || 'Persyaratan data belum lengkap atau permohonan ditolak.',
-        });
-      }
-    }
-
-    return existing;
+    return [
+      {
+        key: 'step-1',
+        title: '1. Pengajuan Masuk',
+        state: 'completed',
+        timestamp: tMenunggu.timestamp,
+        actor: tMenunggu.actor,
+        desc: tMenunggu.note,
+      },
+      {
+        key: 'step-2',
+        title: '2. Verifikasi & Pemrosesan Staf TU',
+        state: isSelesai ? 'completed' : isDiproses ? 'active' : 'pending',
+        timestamp: isSelesai || isDiproses ? tDiproses.timestamp : null,
+        actor: isSelesai || isDiproses ? tDiproses.actor : undefined,
+        desc: isSelesai
+          ? 'Persyaratan data telah diverifikasi dan disetujui oleh Petugas Tata Usaha.'
+          : isDiproses
+          ? (req.processingNote || 'Sedang diverifikasi, disiapkan draft dokumen, dan proses penandatanganan surat.')
+          : 'Menunggu antrean verifikasi kelengkapan berkas oleh Petugas Tata Usaha.',
+      },
+      {
+        key: 'step-3',
+        title: '3. Surat Selesai & Terbit',
+        state: isSelesai ? 'completed' : 'pending',
+        timestamp: isSelesai ? tSelesai.timestamp : null,
+        actor: isSelesai ? tSelesai.actor : undefined,
+        desc: isSelesai
+          ? `Surat resmi telah diterbitkan dengan Nomor: ${req.officialLetterNumber || '-'} dan siap diunduh.`
+          : 'Dokumen surat resmi belum diterbitkan.',
+      },
+    ];
   };
 
   const handleDownloadFile = (rawUrl: string, fileName: string) => {
@@ -361,38 +392,112 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
             </div>
           )}
 
-          {/* Progress Timeline */}
-          <div className="space-y-4">
-            <h3 className="font-bold text-slate-900 text-sm">Riwayat & Status Verifikasi</h3>
+          {/* Progress Stepper Workflow (Opsi B) */}
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-blue-700" />
+                <span>Tahapan & Status Permohonan</span>
+              </h3>
+              <span className="text-[11px] text-slate-500 font-medium">Alur Proses Resmi Tata Usaha</span>
+            </div>
 
-            <div className="relative pl-6 border-l-2 border-blue-200 space-y-6">
-              {getRenderedTimeline(foundRequest).map((item, idx, arr) => {
-                const isLatest = idx === arr.length - 1;
-                const isComplete = item.status === 'Selesai';
-                const isRejected = item.status === 'Ditolak';
+            {/* Stepper Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {getWorkflowSteps(foundRequest).map((step, idx) => {
+                const isCompleted = step.state === 'completed';
+                const isActive = step.state === 'active';
+                const isRejected = step.state === 'rejected';
 
-                let dotClass = 'bg-blue-600';
-                if (isComplete) dotClass = 'bg-emerald-600 ring-4 ring-emerald-100';
-                else if (isRejected) dotClass = 'bg-rose-600 ring-4 ring-rose-100';
-                else if (isLatest) dotClass = 'bg-blue-600 ring-4 ring-blue-100';
+                let borderCard = 'border-slate-200 bg-slate-50/60';
+                let badgeBg = 'bg-slate-200 text-slate-600';
+                let icon = <Clock className="w-4 h-4 text-slate-400" />;
+
+                if (isCompleted) {
+                  borderCard = 'border-emerald-200 bg-emerald-50/40';
+                  badgeBg = 'bg-emerald-100 text-emerald-800 border border-emerald-300';
+                  icon = <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
+                } else if (isActive) {
+                  borderCard = 'border-blue-300 bg-blue-50/60 ring-2 ring-blue-100';
+                  badgeBg = 'bg-blue-600 text-white shadow-xs';
+                  icon = <Clock className="w-4 h-4 text-white animate-spin" />;
+                } else if (isRejected) {
+                  borderCard = 'border-rose-300 bg-rose-50/60 ring-2 ring-rose-100';
+                  badgeBg = 'bg-rose-600 text-white';
+                  icon = <XCircle className="w-4 h-4 text-white" />;
+                }
 
                 return (
-                  <div key={idx} className="relative group">
-                    <div className={`absolute -left-[31px] top-0.5 w-4 h-4 rounded-full border-2 border-white shadow-xs ${dotClass}`}></div>
+                  <div
+                    key={step.key}
+                    className={`p-4 rounded-2xl border transition-all ${borderCard} flex flex-col justify-between space-y-2`}
+                  >
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className={`font-bold text-xs ${isComplete ? 'text-emerald-700' : isRejected ? 'text-rose-700' : 'text-slate-900'}`}>
-                          {item.status === 'Selesai' ? 'Selesai / Terbit' : item.status === 'Diproses' ? 'Sedang Diproses Staf TU' : item.status}
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${badgeBg}`}>
+                          {icon}
                         </span>
-                        <span className="text-[11px] text-slate-400">• {new Date(item.timestamp).toLocaleString('id-ID')}</span>
+                        {step.timestamp && (
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {new Date(step.timestamp).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-xs text-slate-600 mt-0.5">{item.note}</p>
-                      {item.actor && <p className="text-[10px] text-slate-400 mt-0.5">Oleh: {item.actor}</p>}
+                      <h4 className={`text-xs font-bold ${isCompleted ? 'text-emerald-900' : isActive ? 'text-blue-900' : isRejected ? 'text-rose-900' : 'text-slate-700'}`}>
+                        {step.title}
+                      </h4>
+                      <p className="text-[11px] text-slate-600 mt-1 leading-relaxed line-clamp-3">
+                        {step.desc}
+                      </p>
                     </div>
+
+                    {step.timestamp && (
+                      <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-400">
+                        <span>{new Date(step.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                        {step.actor && <span className="truncate max-w-[110px]">{step.actor}</span>}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
+
+            {/* Optional Collapsible Audit Activity Log */}
+            {foundRequest.timeline && foundRequest.timeline.length > 0 && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowActivityLogs(!showActivityLogs)}
+                  className="text-xs text-slate-500 hover:text-blue-700 font-semibold flex items-center gap-1.5 cursor-pointer py-1"
+                >
+                  <History className="w-3.5 h-3.5" />
+                  <span>{showActivityLogs ? 'Sembunyikan' : 'Lihat'} Catatan Log Aktivitas Lengkap ({foundRequest.timeline.length} catatan)</span>
+                  {showActivityLogs ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+
+                {showActivityLogs && (
+                  <div className="mt-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-fade-in text-xs">
+                    <div className="relative pl-5 border-l-2 border-slate-200 space-y-4">
+                      {foundRequest.timeline.map((log, idx) => (
+                        <div key={idx} className="relative">
+                          <div className="absolute -left-[27px] top-1 w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-2xs"></div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-slate-800">{log.status}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                • {new Date(log.timestamp).toLocaleString('id-ID')}
+                              </span>
+                            </div>
+                            <p className="text-slate-600 text-[11px] mt-0.5">{log.note}</p>
+                            {log.actor && <span className="text-[10px] text-slate-400 block mt-0.5">Oleh: {log.actor}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
