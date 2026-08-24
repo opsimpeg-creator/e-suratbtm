@@ -241,18 +241,34 @@ function handleRoute(action, params) {
 
   if (action === 'saveJenisSurat') {
     const sheet = ss.getSheetByName('JenisSurat');
+    const expectedJsHeaders = ['ID', 'Kode', 'NamaSurat', 'Deskripsi', 'LamaProsesHari', 'StatusAktif', 'Urutan', 'Warna', 'Ikon'];
+    var curJsH = sheet.getRange(1, 1, 1, 9).getValues()[0];
+    var needJsFix = false;
+    for (var h = 0; h < expectedJsHeaders.length; h++) {
+      if (!curJsH[h] || String(curJsH[h]).trim() === '') {
+        needJsFix = true;
+        break;
+      }
+    }
+    if (needJsFix) {
+      sheet.getRange(1, 1, 1, 9).setValues([expectedJsHeaders]);
+      sheet.getRange(1, 1, 1, 9).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+    }
+
     const data = sheet.getDataRange().getValues();
     var updated = false;
     for (var i = 1; i < data.length; i++) {
       if (data[i][0] === params.id || data[i][1] === params.code) {
-        sheet.getRange(i + 1, 1, 1, 7).setValues([[
+        sheet.getRange(i + 1, 1, 1, 9).setValues([[
           params.id,
           params.code || '',
           params.name || '',
           params.description || '',
           params.processingTimeDays || 1,
           params.isActive !== false ? 'Ya' : 'Tidak',
-          params.order || 1
+          params.order || 1,
+          params.color || 'bg-blue-600',
+          params.icon || 'FileText'
         ]]);
         updated = true;
         break;
@@ -266,10 +282,12 @@ function handleRoute(action, params) {
         params.description || '',
         params.processingTimeDays || 1,
         params.isActive !== false ? 'Ya' : 'Tidak',
-        params.order || 1
+        params.order || 1,
+        params.color || 'bg-blue-600',
+        params.icon || 'FileText'
       ]);
     }
-    logActivity(ss, 'Admin', 'SAVE_JENIS_SURAT', 'Jenis Surat: ' + params.name);
+    logActivity(ss, 'Admin', 'SAVE_JENIS_SURAT', 'Jenis Surat: ' + params.name + ' (Warna: ' + (params.color || 'default') + ')');
     return { success: true };
   }
 
@@ -332,10 +350,14 @@ function handleRoute(action, params) {
 
   if (action === 'saveAllJenisSurat') {
     const sheet = ss.getSheetByName('JenisSurat');
+    const expectedJsHeaders = ['ID', 'Kode', 'NamaSurat', 'Deskripsi', 'LamaProsesHari', 'StatusAktif', 'Urutan', 'Warna', 'Ikon'];
+    sheet.getRange(1, 1, 1, 9).setValues([expectedJsHeaders]);
+    sheet.getRange(1, 1, 1, 9).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+
     const items = params.items || [];
     const lastRow = sheet.getLastRow();
     if (lastRow > 1) {
-      sheet.getRange(2, 1, lastRow - 1, 7).clearContent();
+      sheet.getRange(2, 1, lastRow - 1, 9).clearContent();
     }
     for (var k = 0; k < items.length; k++) {
       var item = items[k];
@@ -346,7 +368,9 @@ function handleRoute(action, params) {
         item.description || '',
         item.processingTimeDays || 1,
         item.isActive !== false && item.active !== false ? 'Ya' : 'Tidak',
-        item.order || (k + 1)
+        item.order || (k + 1),
+        item.color || 'bg-blue-600',
+        item.icon || item.iconName || 'FileText'
       ]);
     }
     logActivity(ss, 'Admin', 'SYNC_ALL_JENIS_SURAT', 'Sinkronisasi ' + items.length + ' jenis surat');
@@ -763,13 +787,21 @@ function handleRoute(action, params) {
 }
 
 function bootstrapSheets(ss) {
+  if (!ss) {
+    try {
+      ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(SPREADSHEET_ID);
+    } catch (e) {
+      ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    }
+  }
+
   const requiredSheets = [
     { name: 'Pengguna', headers: ['ID', 'Username', 'Password', 'Nama', 'Role', 'Email', 'CreatedAt'] },
     { name: 'Permohonan', headers: ['ID', 'NoPermohonan', 'NamaPemohon', 'Email', 'HP', 'JenisSurat', 'Status', 'FormData', 'Tanggal', 'NoSuratResmi'] },
     { name: 'Pengaduan', headers: ['ID', 'NoTiket', 'NamaPengirim', 'Kontak', 'Kategori', 'IsiPesan', 'Status', 'TanggapanAdmin', 'TanggalMasuk', 'TanggalDitanggapi', 'DitanggapiOleh'] },
     { name: 'MasterKelas', headers: ['ID', 'NamaKelas', 'Tingkat', 'StatusAktif', 'Urutan'] },
     { name: 'MasterJurusan', headers: ['ID', 'KodeJurusan', 'NamaJurusan', 'StatusAktif', 'Urutan'] },
-    { name: 'JenisSurat', headers: ['ID', 'Kode', 'NamaSurat', 'Deskripsi', 'LamaProsesHari', 'StatusAktif', 'Urutan'] },
+    { name: 'JenisSurat', headers: ['ID', 'Kode', 'NamaSurat', 'Deskripsi', 'LamaProsesHari', 'StatusAktif', 'Urutan', 'Warna', 'Ikon'] },
     { name: 'FieldSurat', headers: ['ID', 'JenisSuratID', 'Label', 'Name', 'Type', 'Required', 'Urutan', 'Placeholder', 'PesanBantuan', 'OpsiPilihan'] },
     { name: 'Setting', headers: ['Key', 'Value'] },
     { name: 'Log', headers: ['ID', 'Timestamp', 'User', 'Role', 'Action', 'Details'] },
@@ -814,7 +846,7 @@ function bootstrapSheets(ss) {
         }
       }
     } else {
-      // Jika sheet FieldSurat sudah ada, periksa apakah header kolom 8-10 (Placeholder, PesanBantuan, OpsiPilihan) kosong
+      // Jika sheet FieldSurat sudah ada, periksa apakah header kolom lengkap
       if (req.name === 'FieldSurat') {
         var curH = sheet.getRange(1, 1, 1, 10).getValues()[0];
         var needFix = false;
@@ -829,11 +861,35 @@ function bootstrapSheets(ss) {
           sheet.getRange(1, 1, 1, req.headers.length).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
         }
       }
+
+      // Jika sheet JenisSurat sudah ada, periksa apakah header Warna dan Ikon sudah ada
+      if (req.name === 'JenisSurat') {
+        var curJsHeaders = sheet.getRange(1, 1, 1, 9).getValues()[0];
+        var needJsHeaderFix = false;
+        for (var hj = 0; hj < req.headers.length; hj++) {
+          if (!curJsHeaders[hj] || String(curJsHeaders[hj]).trim() === '') {
+            needJsHeaderFix = true;
+            break;
+          }
+        }
+        if (needJsHeaderFix) {
+          sheet.getRange(1, 1, 1, req.headers.length).setValues([req.headers]);
+          sheet.getRange(1, 1, 1, req.headers.length).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+        }
+      }
     }
   });
 }
 
 function getSheetDataAsJson(ss, sheetName) {
+  if (!ss) {
+    try {
+      ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(SPREADSHEET_ID);
+    } catch (e) {
+      ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    }
+  }
+
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) return [];
   var data = sheet.getDataRange().getValues();
@@ -842,6 +898,7 @@ function getSheetDataAsJson(ss, sheetName) {
   var result = [];
 
   var defaultFieldSuratHeaders = ['ID', 'JenisSuratID', 'Label', 'Name', 'Type', 'Required', 'Urutan', 'Placeholder', 'PesanBantuan', 'OpsiPilihan'];
+  var defaultJenisSuratHeaders = ['ID', 'Kode', 'NamaSurat', 'Deskripsi', 'LamaProsesHari', 'StatusAktif', 'Urutan', 'Warna', 'Ikon'];
 
   for (var i = 1; i < data.length; i++) {
     var obj = {};
@@ -850,15 +907,26 @@ function getSheetDataAsJson(ss, sheetName) {
       if (!headerKey && sheetName === 'FieldSurat' && j < defaultFieldSuratHeaders.length) {
         headerKey = defaultFieldSuratHeaders[j];
       }
+      if (!headerKey && sheetName === 'JenisSurat' && j < defaultJenisSuratHeaders.length) {
+        headerKey = defaultJenisSuratHeaders[j];
+      }
       if (headerKey) {
         obj[headerKey] = data[i][j];
       }
       if (sheetName === 'FieldSurat' && j === 9 && !obj['OpsiPilihan']) {
         obj['OpsiPilihan'] = data[i][j];
       }
+      if (sheetName === 'JenisSurat' && j === 7 && !obj['Warna']) {
+        obj['Warna'] = data[i][j];
+      }
+      if (sheetName === 'JenisSurat' && j === 8 && !obj['Ikon']) {
+        obj['Ikon'] = data[i][j];
+      }
     }
     result.push(obj);
   }
+  return result;
+}
   return result;
 }
 
@@ -1009,8 +1077,10 @@ function logActivity(ss, user, action, details) {
         name: letterType.name,
         description: letterType.description,
         processingTimeDays: letterType.processingTimeDays,
-        isActive: letterType.isActive,
+        isActive: letterType.isActive !== false && letterType.active !== false,
         order: letterType.order || 1,
+        color: letterType.color || 'bg-blue-600',
+        icon: letterType.iconName || letterType.icon || 'FileText',
       };
 
       await fetch(url, {
@@ -1037,7 +1107,18 @@ function logActivity(ss, user, action, details) {
     try {
       const payload = {
         action: 'saveAllJenisSurat',
-        items: letterTypes,
+        items: letterTypes.map((t) => ({
+          id: t.id,
+          code: t.code,
+          name: t.name,
+          description: t.description,
+          processingTimeDays: t.processingTimeDays,
+          isActive: t.active !== false,
+          active: t.active !== false,
+          order: t.order || 1,
+          color: t.color || 'bg-blue-600',
+          icon: t.iconName || (t as any).icon || 'FileText',
+        })),
       };
 
       await fetch(url, {
@@ -1194,6 +1275,8 @@ function logActivity(ss, user, action, details) {
                 LamaProsesHari: c[4]?.v,
                 StatusAktif: c[5]?.v,
                 Urutan: c[6]?.v,
+                Warna: c[7]?.v,
+                Ikon: c[8]?.v,
               };
             });
             if (rawTypesList.length > 0) source = 'Google Spreadsheet (GViz)';
@@ -1205,6 +1288,7 @@ function logActivity(ss, user, action, details) {
     }
 
     if (rawTypesList.length > 0) {
+      const currentLetterTypes = StorageService.getLetterTypes();
       const parsedTypes: any[] = [];
       for (let idx = 0; idx < rawTypesList.length; idx++) {
         const item = rawTypesList[idx];
@@ -1222,6 +1306,10 @@ function logActivity(ss, user, action, details) {
           SKBB: 'bg-amber-600',
           PKL: 'bg-purple-600',
           SKBP: 'bg-rose-600',
+          SRS: 'bg-indigo-600',
+          SPS: 'bg-rose-600',
+          SKL: 'bg-emerald-600',
+          SDS: 'bg-amber-600',
         };
 
         const iconMap: Record<string, string> = {
@@ -1231,17 +1319,46 @@ function logActivity(ss, user, action, details) {
           SKBB: 'FileCheck',
           PKL: 'Briefcase',
           SKBP: 'BookOpen',
+          SRS: 'FileSignature',
+          SPS: 'FileSpreadsheet',
+          SKL: 'GraduationCap',
+          SDS: 'FileQuestion',
         };
 
         const resolvedCode = code || `SRT-${idx + 1}`;
+        const rawId = String(item.ID || item.id || `lt-${idx + 1}`);
+
+        // Find if this type already exists in local storage to preserve user-customized color/icon
+        const existingType = currentLetterTypes.find(
+          (t) => t.id === rawId || (code && t.code.toUpperCase() === code.toUpperCase()) || (name && t.name.toLowerCase() === name.toLowerCase())
+        );
+
+        const rawColor = String(item.Warna || item.warna || item.Color || item.color || '').trim();
+        let finalColor = rawColor;
+        if (!finalColor && existingType?.color) {
+          finalColor = existingType.color;
+        }
+        if (!finalColor) {
+          finalColor = colorMap[resolvedCode] || 'bg-blue-600';
+        }
+
+        const rawIcon = String(item.Ikon || item.ikon || item.Icon || item.icon || '').trim();
+        let finalIcon = rawIcon;
+        if (!finalIcon && existingType?.iconName) {
+          finalIcon = existingType.iconName;
+        }
+        if (!finalIcon) {
+          finalIcon = iconMap[resolvedCode] || 'FileText';
+        }
+
         parsedTypes.push({
-          id: String(item.ID || item.id || `lt-${idx + 1}`),
+          id: rawId,
           code: resolvedCode,
           name: name || `Surat ${resolvedCode}`,
           description: String(item.Deskripsi || item.description || 'Layanan permohonan surat resmi tata usaha.'),
           processingTimeDays: Number(item.LamaProsesHari || item.processingTimeDays || 1),
-          iconName: iconMap[resolvedCode] || 'FileText',
-          color: colorMap[resolvedCode] || 'bg-blue-600',
+          iconName: finalIcon,
+          color: finalColor,
           active: isActive,
           order: Number(item.Urutan || item.order || (idx + 1)),
           templateId: `tpl-${idx + 1}`,
