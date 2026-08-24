@@ -413,13 +413,14 @@ function handleRoute(action, params) {
     // Tulis baris kolom terbaru (tanpa dobel)
     for (var f = 0; f < items.length; f++) {
       var itm = items[f];
+      var isReqStr = (itm.required === false || String(itm.required).toUpperCase() === 'FALSE' || String(itm.required).toUpperCase() === 'TIDAK' || itm.required === 0 || String(itm.required) === '0') ? 'FALSE' : 'TRUE';
       sheet.appendRow([
         itm.id || ('f-' + Date.now() + '-' + (f + 1)),
         letterTypeId || letterTypeCode || '',
         itm.label || '',
         itm.name || '',
         itm.type || 'text',
-        itm.required !== false && itm.required !== 'FALSE' ? 'TRUE' : 'FALSE',
+        isReqStr,
         itm.order || (f + 1),
         itm.placeholder || '',
         itm.helpText || '',
@@ -438,6 +439,7 @@ function handleRoute(action, params) {
     var targetId = String(params.id || '').trim();
     var targetTypeId = String(params.letterTypeId || '').trim();
     var targetName = String(params.name || '').trim();
+    var paramReqStr = (params.required === false || String(params.required).toUpperCase() === 'FALSE' || String(params.required).toUpperCase() === 'TIDAK' || params.required === 0 || String(params.required) === '0') ? 'FALSE' : 'TRUE';
 
     for (var i = 1; i < data.length; i++) {
       var rowId = String(data[i][0]).trim();
@@ -451,7 +453,7 @@ function handleRoute(action, params) {
           params.label || '',
           params.name || '',
           params.type || 'text',
-          params.required !== false && params.required !== 'FALSE' ? 'TRUE' : 'FALSE',
+          paramReqStr,
           params.order || 1,
           params.placeholder || '',
           params.helpText || '',
@@ -468,7 +470,7 @@ function handleRoute(action, params) {
         params.label || '',
         params.name || '',
         params.type || 'text',
-        params.required !== false && params.required !== 'FALSE' ? 'TRUE' : 'FALSE',
+        paramReqStr,
         params.order || 1,
         params.placeholder || '',
         params.helpText || '',
@@ -488,13 +490,14 @@ function handleRoute(action, params) {
     }
     for (var f = 0; f < items.length; f++) {
       var itm = items[f];
+      var itmReqStr = (itm.required === false || String(itm.required).toUpperCase() === 'FALSE' || String(itm.required).toUpperCase() === 'TIDAK' || itm.required === 0 || String(itm.required) === '0') ? 'FALSE' : 'TRUE';
       sheet.appendRow([
         itm.id || ('f-' + (f + 1)),
         itm.letterTypeId || '',
         itm.label || '',
         itm.name || '',
         itm.type || 'text',
-        itm.required !== false && itm.required !== 'FALSE' ? 'TRUE' : 'FALSE',
+        itmReqStr,
         itm.order || (f + 1),
         itm.placeholder || '',
         itm.helpText || '',
@@ -1147,7 +1150,7 @@ function logActivity(ss, user, action, details) {
         label: field.label,
         name: field.name,
         type: field.type || 'text',
-        required: field.required !== false,
+        required: Boolean(field.required),
         order: field.order || 1,
         placeholder: field.placeholder || '',
         helpText: field.helpText || '',
@@ -1195,7 +1198,7 @@ function logActivity(ss, user, action, details) {
           label: f.label,
           name: f.name,
           type: f.type || 'text',
-          required: f.required !== false,
+          required: Boolean(f.required),
           order: f.order || 1,
           placeholder: f.placeholder || '',
           helpText: f.helpText || '',
@@ -1403,7 +1406,7 @@ function logActivity(ss, user, action, details) {
           label: f.label,
           name: f.name,
           type: f.type || 'text',
-          required: f.required !== false,
+          required: Boolean(f.required),
           order: f.order || 1,
           placeholder: f.placeholder || '',
           helpText: f.helpText || '',
@@ -1534,8 +1537,16 @@ function logActivity(ss, user, action, details) {
           continue;
         }
 
-        const rawReq = String(item.Required || item.required || 'TRUE').toUpperCase();
-        const isReq = rawReq === 'TRUE' || rawReq === 'YA' || rawReq === '1';
+        const rawReqVal = item.Required !== undefined ? item.Required : (item.required !== undefined ? item.required : true);
+        let isReq = true;
+        if (typeof rawReqVal === 'boolean') {
+          isReq = rawReqVal;
+        } else if (typeof rawReqVal === 'number') {
+          isReq = rawReqVal !== 0;
+        } else if (typeof rawReqVal === 'string') {
+          const s = rawReqVal.trim().toUpperCase();
+          isReq = s !== 'FALSE' && s !== 'TIDAK' && s !== '0' && s !== 'NO' && s !== 'BUKAN' && s !== '';
+        }
 
         // Check all possible places where options could be stored (including empty key `""` or column index 9)
         const rawOpts = item.OpsiPilihan || item.Options || item.options || item.opsi || item[''] || (Array.isArray(item) ? item[9] : undefined);
