@@ -122,16 +122,13 @@ export async function seedFirestoreIfEmpty(): Promise<void> {
       });
 
       // Seed letter types
-      INITIAL_LETTER_TYPES.forEach((lt) => {
-        batch.set(doc(db, COLLECTIONS.LETTER_TYPES, lt.id), cleanForFirestore(lt));
-      });
+      if (INITIAL_LETTER_TYPES.length > 0) {
+        INITIAL_LETTER_TYPES.forEach((lt) => {
+          batch.set(doc(db, COLLECTIONS.LETTER_TYPES, lt.id), cleanForFirestore(lt));
+        });
+      }
 
-      // Seed form fields
-      INITIAL_FORM_FIELDS.forEach((ff) => {
-        batch.set(doc(db, COLLECTIONS.FORM_FIELDS, ff.id), cleanForFirestore(ff));
-      });
-
-      // Seed templates
+      // Templates & Settings
       INITIAL_TEMPLATES.forEach((tmpl) => {
         batch.set(doc(db, COLLECTIONS.TEMPLATES, tmpl.id), cleanForFirestore(tmpl));
       });
@@ -220,8 +217,13 @@ export function subscribeToFirebase(callback: (data: Partial<{
     collection(db, COLLECTIONS.LETTER_TYPES),
     (snap) => {
       if (!snap.empty) {
-        const letterTypes = snap.docs.map((d) => d.data() as LetterType);
-        callback({ letterTypes });
+        const dummyLetterTypeIds = new Set(['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6']);
+        const letterTypes = snap.docs
+          .map((d) => d.data() as LetterType)
+          .filter((lt) => !dummyLetterTypeIds.has(lt.id));
+        if (letterTypes.length > 0) {
+          callback({ letterTypes });
+        }
       }
     },
     handleSnapshotError('letterTypes')
@@ -231,8 +233,17 @@ export function subscribeToFirebase(callback: (data: Partial<{
     collection(db, COLLECTIONS.FORM_FIELDS),
     (snap) => {
       if (!snap.empty) {
-        const formFields = snap.docs.map((d) => d.data() as FormField);
-        callback({ formFields });
+        const dummyFieldIds = new Set([
+          'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108',
+          'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
+          'f-301', 'f-302', 'f-303', 'f-304', 'f-305'
+        ]);
+        const formFields = snap.docs
+          .map((d) => d.data() as FormField)
+          .filter((ff) => !dummyFieldIds.has(ff.id) && !['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(ff.letterTypeId));
+        if (formFields.length > 0) {
+          callback({ formFields });
+        }
       }
     },
     handleSnapshotError('formFields')

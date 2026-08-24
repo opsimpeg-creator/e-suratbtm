@@ -134,6 +134,14 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
       StorageService.saveSingleFormField(targetField);
       StorageService.saveFormFields(allFields);
 
+      // Explicitly sync this letter type's fields to Google Spreadsheet sheet FieldSurat
+      const updatedFieldsForType = StorageService.getFieldsForLetterType(currentTypeId);
+      AppsScriptService.syncLetterTypeFieldsToAppsScript(
+        currentTypeId,
+        activeLetterType?.code || currentTypeId,
+        updatedFieldsForType
+      ).catch((err) => console.warn('Sync fields error:', err));
+
       onRefresh();
       resetFieldForm();
       setSaveSuccessNotice('Kolom formulir berhasil disimpan & disinkronkan ke Database Spreadsheet (FieldSurat)!');
@@ -152,8 +160,18 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
       StorageService.deleteFormField(fieldId);
       const allFields = StorageService.getFormFields().filter((f) => f.id !== fieldId);
       StorageService.saveFormFields(allFields);
+
+      // Sync remaining fields of this letter type to Google Spreadsheet
+      AppsScriptService.deleteFieldFromAppsScript(fieldId).catch(() => {});
+      const remainingFieldsForType = StorageService.getFieldsForLetterType(currentTypeId);
+      AppsScriptService.syncLetterTypeFieldsToAppsScript(
+        currentTypeId,
+        activeLetterType?.code || currentTypeId,
+        remainingFieldsForType
+      ).catch((err) => console.warn('Sync remaining fields error:', err));
+
       onRefresh();
-      setSaveSuccessNotice('Kolom berhasil dihapus');
+      setSaveSuccessNotice('Kolom berhasil dihapus dari sistem & Spreadsheet');
       setTimeout(() => setSaveSuccessNotice(null), 3000);
     } finally {
       setIsSaving(false);
@@ -175,6 +193,14 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
       allFields.push(dup);
       StorageService.saveSingleFormField(dup);
       StorageService.saveFormFields(allFields);
+
+      const updatedFieldsForType = StorageService.getFieldsForLetterType(currentTypeId);
+      AppsScriptService.syncLetterTypeFieldsToAppsScript(
+        currentTypeId,
+        activeLetterType?.code || currentTypeId,
+        updatedFieldsForType
+      ).catch(() => {});
+
       onRefresh();
     } finally {
       setIsSaving(false);
@@ -200,6 +226,14 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
     setIsSaving(true);
     try {
       StorageService.saveFormFields(allFields);
+
+      const updatedFieldsForType = StorageService.getFieldsForLetterType(currentTypeId);
+      AppsScriptService.syncLetterTypeFieldsToAppsScript(
+        currentTypeId,
+        activeLetterType?.code || currentTypeId,
+        updatedFieldsForType
+      ).catch(() => {});
+
       onRefresh();
     } finally {
       setIsSaving(false);

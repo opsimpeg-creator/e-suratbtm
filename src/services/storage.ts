@@ -82,6 +82,23 @@ if (typeof window !== 'undefined' && window.localStorage) {
       }
     }
 
+    // Purge old mock default form fields if any remain
+    const rawFields = localStorage.getItem(KEYS.FORM_FIELDS);
+    if (rawFields) {
+      const parsedF = JSON.parse(rawFields);
+      if (Array.isArray(parsedF)) {
+        const dummyFieldIds = new Set([
+          'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108',
+          'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
+          'f-301', 'f-302', 'f-303', 'f-304', 'f-305'
+        ]);
+        const cleanedF = parsedF.filter((f: any) => !dummyFieldIds.has(f.id) && !['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
+        if (cleanedF.length !== parsedF.length) {
+          localStorage.setItem(KEYS.FORM_FIELDS, JSON.stringify(cleanedF));
+        }
+      }
+    }
+
     // Purge old mock default letter types if they haven't been configured/synced with spreadsheet
     const rawTypes = localStorage.getItem(KEYS.LETTER_TYPES);
     if (rawTypes) {
@@ -421,7 +438,13 @@ export const StorageService = {
 
   // Form Fields
   getFormFields(): FormField[] {
-    return getStored<FormField[]>(KEYS.FORM_FIELDS, INITIAL_FORM_FIELDS);
+    const list = getStored<FormField[]>(KEYS.FORM_FIELDS, []);
+    const dummyFieldIds = new Set([
+      'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108',
+      'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
+      'f-301', 'f-302', 'f-303', 'f-304', 'f-305'
+    ]);
+    return list.filter((f) => !dummyFieldIds.has(f.id) && !['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
   },
   getFieldsForLetterType(letterTypeId: string): FormField[] {
     const letterTypes = this.getLetterTypes();
@@ -438,22 +461,19 @@ export const StorageService = {
     return fields.sort((a, b) => a.order - b.order);
   },
   async saveFormFields(fields: FormField[]): Promise<void> {
-    setStored(KEYS.FORM_FIELDS, fields);
+    const dummyFieldIds = new Set([
+      'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108',
+      'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
+      'f-301', 'f-302', 'f-303', 'f-304', 'f-305'
+    ]);
+    const cleanFields = fields.filter((f) => !dummyFieldIds.has(f.id) && !['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
+    setStored(KEYS.FORM_FIELDS, cleanFields);
     // Non-blocking sync to Firebase
     Promise.resolve().then(async () => {
       try {
-        await saveFormFieldsToFirebase(fields);
+        await saveFormFieldsToFirebase(cleanFields);
       } catch (e) {
         console.warn('Firebase form fields sync notice:', e);
-      }
-    });
-    // Non-blocking sync to Google Spreadsheet FieldSurat
-    Promise.resolve().then(async () => {
-      try {
-        const { AppsScriptService } = await import('./appsScript');
-        await AppsScriptService.syncAllFieldsToAppsScript(fields);
-      } catch (e) {
-        // ignore
       }
     });
   },
@@ -474,15 +494,6 @@ export const StorageService = {
         console.warn('Firebase single form field sync notice:', e);
       }
     });
-    // Non-blocking sync to Google Spreadsheet FieldSurat
-    Promise.resolve().then(async () => {
-      try {
-        const { AppsScriptService } = await import('./appsScript');
-        await AppsScriptService.sendFieldToAppsScript(field);
-      } catch (e) {
-        // ignore
-      }
-    });
   },
   async deleteFormField(fieldId: string): Promise<void> {
     const allFields = this.getFormFields().filter((f) => f.id !== fieldId);
@@ -493,15 +504,6 @@ export const StorageService = {
         await deleteFormFieldFromFirebase(fieldId);
       } catch (e) {
         console.warn('Firebase delete form field notice:', e);
-      }
-    });
-    // Non-blocking delete from Google Spreadsheet
-    Promise.resolve().then(async () => {
-      try {
-        const { AppsScriptService } = await import('./appsScript');
-        await AppsScriptService.deleteFieldFromAppsScript(fieldId);
-      } catch (e) {
-        // ignore
       }
     });
   },

@@ -138,10 +138,12 @@ export const LetterTypesManagement: React.FC<LetterTypesManagementProps> = ({
   const handlePushToSpreadsheet = async () => {
     setIsSyncing(true);
     try {
-      const res = await AppsScriptService.syncAllLetterTypesToAppsScript();
+      const isSuccess = await AppsScriptService.syncAllLetterTypesToAppsScript();
       setNotice({
-        type: res.success ? 'success' : 'error',
-        text: res.message || 'Berhasil menyinkronkan jenis surat ke Spreadsheet sheet JenisSurat!',
+        type: isSuccess ? 'success' : 'error',
+        text: isSuccess
+          ? 'Berhasil menyinkronkan jenis surat ke Spreadsheet sheet JenisSurat!'
+          : 'Gagal menyinkronkan jenis surat ke Spreadsheet.',
       });
       setTimeout(() => setNotice(null), 4500);
     } catch (err: any) {

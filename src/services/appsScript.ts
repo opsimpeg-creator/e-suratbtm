@@ -1363,9 +1363,15 @@ function logActivity(ss, user, action, details) {
       const parsedFields: any[] = [];
       for (let idx = 0; idx < rawFieldsList.length; idx++) {
         const item = rawFieldsList[idx];
+        const rawId = String(item.ID || item.id || '').trim();
         const label = String(item.Label || item.label || '').trim();
         const letterTypeId = String(item.JenisSuratID || item.letterTypeId || item.jenisSuratId || '').trim();
         if (!label || !letterTypeId) continue;
+
+        // Skip header rows if accidentally parsed
+        if (rawId.toUpperCase() === 'ID' || label.toUpperCase() === 'LABEL' || letterTypeId.toUpperCase() === 'JENISSURATID') {
+          continue;
+        }
 
         const rawReq = String(item.Required || item.required || 'TRUE').toUpperCase();
         const isReq = rawReq === 'TRUE' || rawReq === 'YA' || rawReq === '1';
@@ -1378,7 +1384,7 @@ function logActivity(ss, user, action, details) {
         }
 
         parsedFields.push({
-          id: String(item.ID || item.id || `f-${idx + 1}`),
+          id: rawId || `f-${idx + 1}`,
           letterTypeId,
           label,
           name: String(item.Name || item.name || label.toLowerCase().replace(/[^a-z0-9]/g, '_')),
