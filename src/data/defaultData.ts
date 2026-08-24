@@ -77,23 +77,13 @@ export const INITIAL_USERS: User[] = [
   },
   {
     id: 'u2',
-    username: 'operator',
+    username: 'staf_tu',
     password: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', // admin123
     name: 'Budi Santoso (Staf TU)',
     role: 'admin_tu',
     email: 'budi.tu@smkn1batumandi.sch.id',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80',
     createdAt: '2026-01-05T08:00:00Z',
-  },
-  {
-    id: 'u3',
-    username: 'loket',
-    password: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', // admin123
-    name: 'Sari Indah (Petugas Loket)',
-    role: 'operator',
-    email: 'sari.tu@smkn1batumandi.sch.id',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80',
-    createdAt: '2026-02-01T08:00:00Z',
   },
 ];
 

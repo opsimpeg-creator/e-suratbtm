@@ -5,6 +5,7 @@ import {
   SubmissionRequest,
   LetterTemplate,
   User,
+  UserRole,
   AuditLog,
   RequestStatus,
   ComplaintTicket,
@@ -320,6 +321,7 @@ export const StorageService = {
     const list = getStored<User[]>(KEYS.USERS, INITIAL_USERS);
     return list.map((u) => ({
       ...u,
+      role: (u.role === 'super_admin' ? 'super_admin' : 'admin_tu') as UserRole,
       password: u.password || '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
       status: u.status || 'active',
     }));

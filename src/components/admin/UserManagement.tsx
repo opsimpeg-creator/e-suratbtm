@@ -114,7 +114,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onR
           <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Akses Pengguna & Role</span>
           <h2 className="text-xl font-extrabold text-slate-900">Manajemen Pengguna Internal</h2>
           <p className="text-xs text-slate-500">
-            Atur perizinan hak akses dan kelola password login untuk Super Admin, Admin Tata Usaha, dan Operator Loket.
+            Atur perizinan hak akses dan kelola password login untuk Super Admin dan Admin Tata Usaha.
           </p>
         </div>
 
@@ -150,8 +150,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onR
                     <h3 className="font-bold text-slate-900 text-sm">{u.name}</h3>
                     <p className="text-xs text-slate-400 font-mono">@{u.username}</p>
                     <div className="flex items-center gap-1.5 mt-1">
-                      <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                        {u.role.replace('_', ' ')}
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase ${
+                        u.role === 'super_admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-sky-100 text-sky-800'
+                      }`}>
+                        {u.role === 'super_admin' ? 'Super Admin' : 'Admin TU'}
                       </span>
                       {u.status === 'inactive' ? (
                         <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
@@ -309,9 +311,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onR
                   onChange={(e: any) => setRole(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white font-bold"
                 >
-                  <option value="super_admin">Super Admin (Akses Penuh)</option>
-                  <option value="admin_tu">Admin Tata Usaha (Kelola Surat)</option>
-                  <option value="operator">Operator Loket (Proses Surat)</option>
+                  <option value="super_admin">Super Admin (Akses Penuh & Pengaturan)</option>
+                  <option value="admin_tu">Admin Tata Usaha (Pengolah & Penerbit Surat)</option>
                 </select>
               </div>
 

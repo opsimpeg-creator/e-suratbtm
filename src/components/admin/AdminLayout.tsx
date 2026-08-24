@@ -162,8 +162,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             />
             <div className="flex-1 min-w-0">
               <h4 className="font-bold text-white text-xs truncate">{currentUser.name}</h4>
-              <span className="bg-blue-900 text-blue-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                {currentUser.role.replace('_', ' ')}
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase ${
+                currentUser.role === 'super_admin' ? 'bg-indigo-950 text-indigo-300 border border-indigo-700/50' : 'bg-sky-950 text-sky-300 border border-sky-700/50'
+              }`}>
+                {currentUser.role === 'super_admin' ? 'Super Admin' : 'Admin TU'}
               </span>
             </div>
           </div>
