@@ -131,12 +131,12 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
         allFields.push(targetField);
       }
 
-      await StorageService.saveSingleFormField(targetField);
-      await StorageService.saveFormFields(allFields);
+      StorageService.saveSingleFormField(targetField);
+      StorageService.saveFormFields(allFields);
 
       onRefresh();
       resetFieldForm();
-      setSaveSuccessNotice('Konfigurasi kolom formulir berhasil disimpan permanen ke Cloud Firestore!');
+      setSaveSuccessNotice('Kolom formulir berhasil disimpan & disinkronkan ke Database Spreadsheet (FieldSurat)!');
       setTimeout(() => setSaveSuccessNotice(null), 4000);
     } catch (err) {
       console.error('Error saving form field:', err);
@@ -149,11 +149,11 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
     if (isSaving) return;
     setIsSaving(true);
     try {
-      await StorageService.deleteFormField(fieldId);
+      StorageService.deleteFormField(fieldId);
       const allFields = StorageService.getFormFields().filter((f) => f.id !== fieldId);
-      await StorageService.saveFormFields(allFields);
+      StorageService.saveFormFields(allFields);
       onRefresh();
-      setSaveSuccessNotice('Kolom berhasil dihapus dari Cloud Firestore');
+      setSaveSuccessNotice('Kolom berhasil dihapus');
       setTimeout(() => setSaveSuccessNotice(null), 3000);
     } finally {
       setIsSaving(false);
@@ -173,8 +173,8 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
         order: fields.length + 1,
       };
       allFields.push(dup);
-      await StorageService.saveSingleFormField(dup);
-      await StorageService.saveFormFields(allFields);
+      StorageService.saveSingleFormField(dup);
+      StorageService.saveFormFields(allFields);
       onRefresh();
     } finally {
       setIsSaving(false);
@@ -199,25 +199,49 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
 
     setIsSaving(true);
     try {
-      await StorageService.saveFormFields(allFields);
+      StorageService.saveFormFields(allFields);
       onRefresh();
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSyncAllFieldsNow = async () => {
-    if (isSaving) return;
-    setIsSaving(true);
+  const [isSyncingFields, setIsSyncingFields] = useState(false);
+
+  const handlePullFieldsFromSpreadsheet = async () => {
+    setIsSyncingFields(true);
     try {
-      const allFields = StorageService.getFormFields();
-      await StorageService.saveFormFields(allFields);
-      onRefresh();
-      setSaveSuccessNotice('Seluruh kolom formulir berhasil disinkronkan ke Cloud Firestore!');
+      const res = await AppsScriptService.fetchFieldsFromSpreadsheet();
+      setSaveSuccessNotice(res.message);
+      if (res.success) {
+        onRefresh();
+      }
+      setTimeout(() => setSaveSuccessNotice(null), 4500);
+    } catch (e: any) {
+      setSaveSuccessNotice(`⚠️ Gagal memuat kolom dari Spreadsheet: ${e?.message || 'Error'}`);
       setTimeout(() => setSaveSuccessNotice(null), 4000);
     } finally {
-      setIsSaving(false);
+      setIsSyncingFields(false);
     }
+  };
+
+  const handlePushFieldsToSpreadsheet = async () => {
+    setIsSyncingFields(true);
+    try {
+      const res = await AppsScriptService.syncAllFieldsToAppsScript();
+      setSaveSuccessNotice(res.message);
+      setTimeout(() => setSaveSuccessNotice(null), 4500);
+    } catch (e: any) {
+      setSaveSuccessNotice(`⚠️ Gagal mengirim kolom ke Spreadsheet: ${e?.message || 'Error'}`);
+      setTimeout(() => setSaveSuccessNotice(null), 4000);
+    } finally {
+      setIsSyncingFields(false);
+    }
+  };
+
+  const handleSyncAllFieldsNow = async () => {
+    if (isSaving || isSyncingFields) return;
+    await handlePushFieldsToSpreadsheet();
   };
 
   const [isSyncingMaster, setIsSyncingMaster] = useState(false);
@@ -265,12 +289,14 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
     <div className="space-y-6">
       {/* Save Notice */}
       {saveSuccessNotice && (
-        <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 p-4 rounded-2xl flex items-center justify-between text-xs font-bold animate-fadeIn">
+        <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-bold animate-fadeIn">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
             <span>{saveSuccessNotice}</span>
           </div>
-          <span className="text-[11px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">Cloud Firestore Synchronized</span>
+          <span className="text-[11px] text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full self-start sm:self-auto font-mono">
+            Sheet: FieldSurat Connected
+          </span>
         </div>
       )}
 
@@ -456,7 +482,7 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
                   {isSaving ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Menyimpan ke Cloud...</span>
+                      <span>Menyimpan...</span>
                     </>
                   ) : (
                     <>
@@ -476,18 +502,30 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
                 <h3 className="font-extrabold text-slate-900 text-sm">
                   Daftar Kolom Isian ({fields.length} Kolom)
                 </h3>
-                <p className="text-xs text-slate-400 font-normal">Gunakan panah untuk mengatur urutan</p>
+                <p className="text-xs text-slate-400 font-normal">Gunakan panah untuk mengatur urutan formulir</p>
               </div>
-              <button
-                type="button"
-                onClick={handleSyncAllFieldsNow}
-                disabled={isSaving}
-                className="text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold px-3 py-1.5 rounded-xl border border-slate-200 transition flex items-center gap-1.5 self-start sm:self-auto"
-                title="Kunci & sinkronkan semua kolom ke Cloud Firestore"
-              >
-                {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                <span>Sinkronkan ke Cloud</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={handlePullFieldsFromSpreadsheet}
+                  disabled={isSaving || isSyncingFields}
+                  className="text-xs bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-bold px-3 py-1.5 rounded-xl border border-slate-200 hover:border-emerald-300 transition flex items-center gap-1.5"
+                  title="Tarik data kolom formulir dari sheet FieldSurat di Google Spreadsheet"
+                >
+                  {isSyncingFields ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" /> : <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />}
+                  <span>Tarik dari Spreadsheet</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePushFieldsToSpreadsheet}
+                  disabled={isSaving || isSyncingFields}
+                  className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold px-3 py-1.5 rounded-xl border border-blue-200 transition flex items-center gap-1.5"
+                  title="Kirim dan sinkronkan seluruh kolom formulir ke sheet FieldSurat di Google Spreadsheet"
+                >
+                  {isSyncingFields ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>Kirim ke Spreadsheet</span>
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">

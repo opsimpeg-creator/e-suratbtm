@@ -409,7 +409,23 @@ export const StorageService = {
   },
   async saveFormFields(fields: FormField[]): Promise<void> {
     setStored(KEYS.FORM_FIELDS, fields);
-    await saveFormFieldsToFirebase(fields);
+    // Non-blocking sync to Firebase
+    Promise.resolve().then(async () => {
+      try {
+        await saveFormFieldsToFirebase(fields);
+      } catch (e) {
+        console.warn('Firebase form fields sync notice:', e);
+      }
+    });
+    // Non-blocking sync to Google Spreadsheet FieldSurat
+    Promise.resolve().then(async () => {
+      try {
+        const { AppsScriptService } = await import('./appsScript');
+        await AppsScriptService.syncAllFieldsToAppsScript(fields);
+      } catch (e) {
+        // ignore
+      }
+    });
   },
   async saveSingleFormField(field: FormField): Promise<void> {
     const allFields = this.getFormFields();
@@ -420,12 +436,44 @@ export const StorageService = {
       allFields.push(field);
     }
     setStored(KEYS.FORM_FIELDS, allFields);
-    await saveSingleFormFieldToFirebase(field);
+    // Non-blocking sync to Firebase
+    Promise.resolve().then(async () => {
+      try {
+        await saveSingleFormFieldToFirebase(field);
+      } catch (e) {
+        console.warn('Firebase single form field sync notice:', e);
+      }
+    });
+    // Non-blocking sync to Google Spreadsheet FieldSurat
+    Promise.resolve().then(async () => {
+      try {
+        const { AppsScriptService } = await import('./appsScript');
+        await AppsScriptService.sendFieldToAppsScript(field);
+      } catch (e) {
+        // ignore
+      }
+    });
   },
   async deleteFormField(fieldId: string): Promise<void> {
     const allFields = this.getFormFields().filter((f) => f.id !== fieldId);
     setStored(KEYS.FORM_FIELDS, allFields);
-    await deleteFormFieldFromFirebase(fieldId);
+    // Non-blocking delete from Firebase
+    Promise.resolve().then(async () => {
+      try {
+        await deleteFormFieldFromFirebase(fieldId);
+      } catch (e) {
+        console.warn('Firebase delete form field notice:', e);
+      }
+    });
+    // Non-blocking delete from Google Spreadsheet
+    Promise.resolve().then(async () => {
+      try {
+        const { AppsScriptService } = await import('./appsScript');
+        await AppsScriptService.deleteFieldFromAppsScript(fieldId);
+      } catch (e) {
+        // ignore
+      }
+    });
   },
 
   // Templates

@@ -102,7 +102,7 @@ export const SpreadsheetSyncPage: React.FC<SpreadsheetSyncPageProps> = ({ settin
         </p>
 
         {/* Master Data Snapshot Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
           <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/15 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-300 flex items-center justify-center font-bold">
@@ -127,6 +127,19 @@ export const SpreadsheetSyncPage: React.FC<SpreadsheetSyncPageProps> = ({ settin
               </div>
             </div>
             <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-400/30">Auto Dropdown</span>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/15 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[11px] text-emerald-200 uppercase font-bold tracking-wider">Sheet: FieldSurat</p>
+                <p className="text-sm font-extrabold text-white">{StorageService.getFormFields().length} Kolom Formulir</p>
+              </div>
+            </div>
+            <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-400/30">Dynamic Form</span>
           </div>
         </div>
 

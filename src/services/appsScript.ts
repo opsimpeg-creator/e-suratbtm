@@ -353,6 +353,86 @@ function handleRoute(action, params) {
     return { success: true };
   }
 
+  if (action === 'saveFieldSurat') {
+    const sheet = ss.getSheetByName('FieldSurat');
+    if (!sheet) return { success: false, message: "Sheet FieldSurat tidak ditemukan" };
+    const data = sheet.getDataRange().getValues();
+    var updated = false;
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(params.id) || (String(data[i][1]) === String(params.letterTypeId) && String(data[i][3]) === String(params.name))) {
+        sheet.getRange(i + 1, 1, 1, 10).setValues([[
+          params.id,
+          params.letterTypeId || '',
+          params.label || '',
+          params.name || '',
+          params.type || 'text',
+          params.required !== false && params.required !== 'FALSE' ? 'TRUE' : 'FALSE',
+          params.order || 1,
+          params.placeholder || '',
+          params.helpText || '',
+          Array.isArray(params.options) ? params.options.join(', ') : (params.options || '')
+        ]]);
+        updated = true;
+        break;
+      }
+    }
+    if (!updated) {
+      sheet.appendRow([
+        params.id || 'f-' + Date.now(),
+        params.letterTypeId || '',
+        params.label || '',
+        params.name || '',
+        params.type || 'text',
+        params.required !== false && params.required !== 'FALSE' ? 'TRUE' : 'FALSE',
+        params.order || 1,
+        params.placeholder || '',
+        params.helpText || '',
+        Array.isArray(params.options) ? params.options.join(', ') : (params.options || '')
+      ]);
+    }
+    return { success: true };
+  }
+
+  if (action === 'saveAllFieldSurat') {
+    const sheet = ss.getSheetByName('FieldSurat');
+    if (!sheet) return { success: false, message: "Sheet FieldSurat tidak ditemukan" };
+    const items = params.items || params.fields || [];
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, 10).clearContent();
+    }
+    for (var f = 0; f < items.length; f++) {
+      var itm = items[f];
+      sheet.appendRow([
+        itm.id || ('f-' + (f + 1)),
+        itm.letterTypeId || '',
+        itm.label || '',
+        itm.name || '',
+        itm.type || 'text',
+        itm.required !== false && itm.required !== 'FALSE' ? 'TRUE' : 'FALSE',
+        itm.order || (f + 1),
+        itm.placeholder || '',
+        itm.helpText || '',
+        Array.isArray(itm.options) ? itm.options.join(', ') : (itm.options || '')
+      ]);
+    }
+    logActivity(ss, 'Admin', 'SYNC_ALL_FIELD_SURAT', 'Sinkronisasi ' + items.length + ' kolom formulir');
+    return { success: true, count: items.length };
+  }
+
+  if (action === 'deleteFieldSurat') {
+    const sheet = ss.getSheetByName('FieldSurat');
+    if (!sheet) return { success: false, message: "Sheet FieldSurat tidak ditemukan" };
+    const data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(params.id)) {
+        sheet.deleteRow(i + 1);
+        return { success: true };
+      }
+    }
+    return { success: false };
+  }
+
   if (action === 'submitRequest' || action === 'saveSubmission') {
     var lock = LockService.getScriptLock();
     var hasLock = false;
@@ -629,7 +709,7 @@ function bootstrapSheets(ss) {
     { name: 'MasterKelas', headers: ['ID', 'NamaKelas', 'Tingkat', 'StatusAktif', 'Urutan'] },
     { name: 'MasterJurusan', headers: ['ID', 'KodeJurusan', 'NamaJurusan', 'StatusAktif', 'Urutan'] },
     { name: 'JenisSurat', headers: ['ID', 'Kode', 'NamaSurat', 'Deskripsi', 'LamaProsesHari', 'StatusAktif', 'Urutan'] },
-    { name: 'FieldSurat', headers: ['ID', 'JenisSuratID', 'Label', 'Name', 'Type', 'Required', 'Urutan'] },
+    { name: 'FieldSurat', headers: ['ID', 'JenisSuratID', 'Label', 'Name', 'Type', 'Required', 'Urutan', 'Placeholder', 'PesanBantuan', 'OpsiPilihan'] },
     { name: 'Setting', headers: ['Key', 'Value'] },
     { name: 'Log', headers: ['ID', 'Timestamp', 'User', 'Role', 'Action', 'Details'] },
     { name: 'TemplateSurat', headers: ['ID', 'JenisSuratID', 'Title', 'ContentHtml', 'UpdatedAt'] },
@@ -884,6 +964,229 @@ function logActivity(ss, user, action, details) {
       console.warn('Sync all JenisSurat to Google Apps Script error:', err);
       return false;
     }
+  },
+
+  sendFieldToAppsScript: async function (field: any): Promise<boolean> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    if (!url) return false;
+
+    try {
+      const payload = {
+        action: 'saveFieldSurat',
+        id: field.id,
+        letterTypeId: field.letterTypeId,
+        label: field.label,
+        name: field.name,
+        type: field.type || 'text',
+        required: field.required !== false,
+        order: field.order || 1,
+        placeholder: field.placeholder || '',
+        helpText: field.helpText || '',
+        options: field.options || [],
+      };
+
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+        mode: 'no-cors',
+      });
+      return true;
+    } catch (err) {
+      console.warn('Save FieldSurat to Google Apps Script error:', err);
+      return false;
+    }
+  },
+
+  syncAllFieldsToAppsScript: async function (fields?: any[]): Promise<{ success: boolean; message: string; count: number }> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    const targetFields = fields || StorageService.getFormFields();
+
+    if (!url) {
+      return {
+        success: false,
+        message: 'URL Web App Google Apps Script belum dikonfigurasi.',
+        count: targetFields.length,
+      };
+    }
+
+    try {
+      const payload = {
+        action: 'saveAllFieldSurat',
+        items: targetFields.map((f: any) => ({
+          id: f.id,
+          letterTypeId: f.letterTypeId,
+          label: f.label,
+          name: f.name,
+          type: f.type || 'text',
+          required: f.required !== false,
+          order: f.order || 1,
+          placeholder: f.placeholder || '',
+          helpText: f.helpText || '',
+          options: f.options || [],
+        })),
+      };
+
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+        mode: 'no-cors',
+      });
+      return {
+        success: true,
+        message: `Berhasil mengirim ${targetFields.length} kolom formulir ke sheet FieldSurat di Google Spreadsheet!`,
+        count: targetFields.length,
+      };
+    } catch (err: any) {
+      console.warn('Sync all FieldSurat to Google Apps Script error:', err);
+      return {
+        success: false,
+        message: 'Gagal mengirim kolom formulir ke Spreadsheet: ' + (err?.message || 'Error'),
+        count: 0,
+      };
+    }
+  },
+
+  deleteFieldFromAppsScript: async function (fieldId: string): Promise<boolean> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    if (!url) return false;
+
+    try {
+      const payload = {
+        action: 'deleteFieldSurat',
+        id: fieldId,
+      };
+
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+        mode: 'no-cors',
+      });
+      return true;
+    } catch (err) {
+      console.warn('Delete FieldSurat in Google Apps Script error:', err);
+      return false;
+    }
+  },
+
+  fetchFieldsFromSpreadsheet: async function (forceSilent = false): Promise<{
+    success: boolean;
+    fields: any[];
+    message: string;
+  }> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    let rawFieldsList: any[] = [];
+    let source = '';
+
+    // 1. Try Web App API
+    if (url) {
+      try {
+        const resp = await fetch(`${url}?action=getAllData`);
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.success && Array.isArray(json.fieldSurat) && json.fieldSurat.length > 0) {
+            rawFieldsList = json.fieldSurat;
+            source = 'Web App API';
+          }
+        }
+      } catch (e) {
+        // continue to GViz fallback
+      }
+    }
+
+    // 2. Fallback via GViz API directly on sheet=FieldSurat
+    if (rawFieldsList.length === 0 && settings.spreadsheetId) {
+      try {
+        const gvizUrl = `https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}/gviz/tq?tqx=out:json&sheet=FieldSurat`;
+        const gvizRes = await fetch(gvizUrl);
+        if (gvizRes.ok) {
+          const text = await gvizRes.text();
+          const jsonText = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+          const gvizData = JSON.parse(jsonText);
+          if (gvizData?.table?.rows) {
+            rawFieldsList = gvizData.table.rows.map((r: any, idx: number) => {
+              const c = r.c || [];
+              return {
+                ID: c[0]?.v,
+                JenisSuratID: c[1]?.v,
+                Label: c[2]?.v,
+                Name: c[3]?.v,
+                Type: c[4]?.v,
+                Required: c[5]?.v,
+                Urutan: c[6]?.v,
+                Placeholder: c[7]?.v,
+                PesanBantuan: c[8]?.v,
+                OpsiPilihan: c[9]?.v,
+              };
+            });
+            if (rawFieldsList.length > 0) source = 'Google Spreadsheet (GViz)';
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    if (rawFieldsList.length > 0) {
+      const parsedFields: any[] = [];
+      for (let idx = 0; idx < rawFieldsList.length; idx++) {
+        const item = rawFieldsList[idx];
+        const label = String(item.Label || item.label || '').trim();
+        const letterTypeId = String(item.JenisSuratID || item.letterTypeId || item.jenisSuratId || '').trim();
+        if (!label || !letterTypeId) continue;
+
+        const rawReq = String(item.Required || item.required || 'TRUE').toUpperCase();
+        const isReq = rawReq === 'TRUE' || rawReq === 'YA' || rawReq === '1';
+        const rawOpts = item.OpsiPilihan || item.Options || item.options || item.opsi;
+        let parsedOpts: string[] | undefined = undefined;
+        if (typeof rawOpts === 'string' && rawOpts.trim()) {
+          parsedOpts = rawOpts.split(/[\n,]+/).map((o: string) => o.trim()).filter(Boolean);
+        } else if (Array.isArray(rawOpts)) {
+          parsedOpts = rawOpts;
+        }
+
+        parsedFields.push({
+          id: String(item.ID || item.id || `f-${idx + 1}`),
+          letterTypeId,
+          label,
+          name: String(item.Name || item.name || label.toLowerCase().replace(/[^a-z0-9]/g, '_')),
+          type: String(item.Type || item.type || 'text').toLowerCase(),
+          required: isReq,
+          order: Number(item.Urutan || item.order || (idx + 1)),
+          placeholder: item.Placeholder || item.placeholder || undefined,
+          helpText: item.PesanBantuan || item.HelpText || item.helpText || undefined,
+          options: parsedOpts,
+        });
+      }
+
+      if (parsedFields.length > 0) {
+        parsedFields.sort((a, b) => (a.order || 0) - (b.order || 0));
+        await StorageService.saveFormFields(parsedFields);
+        return {
+          success: true,
+          fields: parsedFields,
+          message: `Berhasil memuat ${parsedFields.length} kolom formulir dari sheet FieldSurat (${source})!`,
+        };
+      }
+    }
+
+    return {
+      success: false,
+      fields: StorageService.getFormFields(),
+      message: 'Tidak ada data kolom formulir baru di Spreadsheet FieldSurat. Menggunakan kolom yang tersimpan.',
+    };
   },
 
   sendUserToAppsScript: async function (user: any): Promise<boolean> {
@@ -1190,9 +1493,16 @@ function logActivity(ss, user, action, details) {
         StorageService.saveComplaints(parsedComplaints);
       }
 
+      // Fetch / Parse FieldSurat
+      try {
+        await this.fetchFieldsFromSpreadsheet(true);
+      } catch (errField) {
+        // ignore
+      }
+
       return {
         success: true,
-        message: `Berhasil sinkronisasi ${parsedSubmissions.length} permohonan & ${parsedComplaints.length} pesan pengaduan langsung dari Google Spreadsheet!`,
+        message: `Berhasil sinkronisasi ${parsedSubmissions.length} permohonan, ${parsedComplaints.length} pesan pengaduan, dan kolom formulir langsung dari Google Spreadsheet!`,
         count: parsedSubmissions.length + parsedComplaints.length,
       };
     } catch (err: any) {
@@ -1450,10 +1760,11 @@ function logActivity(ss, user, action, details) {
     }
 
     try {
-      // Sync Jenis Surat, Pengguna, Format Nomor Surat, dan Pengaduan
+      // Sync Jenis Surat, Pengguna, Format Nomor Surat, Kolom Formulir, dan Pengaduan
       await this.syncAllLetterTypesToAppsScript();
       await this.syncAllUsersToAppsScript();
       await this.sendNomorSuratToAppsScript();
+      await this.syncAllFieldsToAppsScript();
 
       for (const comp of complaints) {
         await this.sendComplaintToAppsScript(comp);
@@ -1466,7 +1777,7 @@ function logActivity(ss, user, action, details) {
       }
       return {
         success: true,
-        message: `Berhasil mengirim ${sentCount} data permohonan, ${complaints.length} pengaduan, ${letterTypes.length} Jenis Surat, Format Nomor Surat, dan ${users.length} Pengguna secara realtime ke Google Spreadsheet!`,
+        message: `Berhasil mengirim ${sentCount} data permohonan, ${complaints.length} pengaduan, kolom formulir, ${letterTypes.length} Jenis Surat, Format Nomor Surat, dan ${users.length} Pengguna secara realtime ke Google Spreadsheet!`,
         count: sentCount,
       };
     } catch (err: any) {
