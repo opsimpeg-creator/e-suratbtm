@@ -74,34 +74,64 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
   };
 
   const handleOpenOfficialLetterPreview = async (req: SubmissionRequest) => {
-    if (req.issuedDocumentUrl) {
-      handleOpenPreview(
-        req.issuedDocumentUrl,
-        req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
+    try {
+      const isManualOrHttp = req.issuedDocumentUrl && (
+        req.issuedDocumentUrl.startsWith('http://') || 
+        req.issuedDocumentUrl.startsWith('https://') || 
+        req.formData?._isManualUpload
       );
-    } else {
-      try {
-        const tpl = StorageService.getTemplateForLetterType(req.letterTypeId);
-        const blobUrl = await PdfGenerator.getOfficialLetterPdfBlobUrl(req, tpl, settings);
-        setPreviewModalFile({
-          fileName: req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`,
-          fileUrl: blobUrl,
-        });
-      } catch (err) {
-        console.error('Error generating preview:', err);
+
+      if (isManualOrHttp && req.issuedDocumentUrl) {
+        handleOpenPreview(
+          req.issuedDocumentUrl,
+          req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
+        );
+        return;
+      }
+
+      const tpl = StorageService.getTemplateForLetterType(req.letterTypeId);
+      const blobUrl = await PdfGenerator.getOfficialLetterPdfBlobUrl(req, tpl, settings);
+      setPreviewModalFile({
+        fileName: req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`,
+        fileUrl: blobUrl,
+      });
+    } catch (err) {
+      console.error('Error generating preview:', err);
+      if (req.issuedDocumentUrl) {
+        handleOpenPreview(
+          req.issuedDocumentUrl,
+          req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
+        );
       }
     }
   };
 
   const handleDownloadOfficialLetter = async (req: SubmissionRequest) => {
-    if (req.issuedDocumentUrl) {
-      handleDownloadFile(
-        req.issuedDocumentUrl,
-        req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
+    try {
+      const isManualOrHttp = req.issuedDocumentUrl && (
+        req.issuedDocumentUrl.startsWith('http://') || 
+        req.issuedDocumentUrl.startsWith('https://') || 
+        req.formData?._isManualUpload
       );
-    } else {
+
+      if (isManualOrHttp && req.issuedDocumentUrl) {
+        handleDownloadFile(
+          req.issuedDocumentUrl,
+          req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
+        );
+        return;
+      }
+
       const tpl = StorageService.getTemplateForLetterType(req.letterTypeId);
       await PdfGenerator.generateOfficialLetterPdf(req, tpl, settings);
+    } catch (e) {
+      console.error('Error downloading official letter:', e);
+      if (req.issuedDocumentUrl) {
+        handleDownloadFile(
+          req.issuedDocumentUrl,
+          req.formData?._officialFileName || `Surat_Resmi_${req.requestNumber}.pdf`
+        );
+      }
     }
   };
 

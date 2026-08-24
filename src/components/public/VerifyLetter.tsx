@@ -311,8 +311,23 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
-                          onClick={() => handleOpenPreview(docUrl, docName)}
-                          className="px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow-sm"
+                          onClick={async () => {
+                            if (isHttp || verifiedRequest.formData?._isManualUpload) {
+                              handleOpenPreview(docUrl, docName);
+                            } else {
+                              try {
+                                const tpl = StorageService.getTemplateForLetterType(verifiedRequest.letterTypeId);
+                                const blobUrl = await PdfGenerator.getOfficialLetterPdfBlobUrl(verifiedRequest, tpl, settings);
+                                setPreviewModalFile({
+                                  fileName: docName,
+                                  fileUrl: blobUrl,
+                                });
+                              } catch (e) {
+                                handleOpenPreview(docUrl, docName);
+                              }
+                            }
+                          }}
+                          className="px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
                           title="Lihat Dokumen Surat Resmi"
                         >
                           {isHttp ? <ExternalLink className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -320,8 +335,19 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDownloadFile(docUrl, docName)}
-                          className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow-sm"
+                          onClick={async () => {
+                            if (isHttp || verifiedRequest.formData?._isManualUpload) {
+                              handleDownloadFile(docUrl, docName);
+                            } else {
+                              try {
+                                const tpl = StorageService.getTemplateForLetterType(verifiedRequest.letterTypeId);
+                                await PdfGenerator.generateOfficialLetterPdf(verifiedRequest, tpl, settings);
+                              } catch (e) {
+                                handleDownloadFile(docUrl, docName);
+                              }
+                            }
+                          }}
+                          className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
                           title="Unduh Dokumen Surat Resmi"
                         >
                           <FileDown className="w-4 h-4" />

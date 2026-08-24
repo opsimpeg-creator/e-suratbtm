@@ -93,6 +93,7 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
   const [uploadedOfficialFileUrl, setUploadedOfficialFileUrl] = useState<string>('');
   const [uploadedOfficialFileName, setUploadedOfficialFileName] = useState<string>('');
   const [isUploadingOfficial, setIsUploadingOfficial] = useState(false);
+  const [isRegeneratingPdf, setIsRegeneratingPdf] = useState(false);
   const [isQrStamperOpen, setIsQrStamperOpen] = useState(false);
 
   // Preview File Modal State
@@ -293,6 +294,69 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
   const handleAutoGenerateNumber = () => {
     const generated = StorageService.generateNextOfficialLetterNumber();
     setOfficialNumberInput(generated);
+  };
+
+  const handleRegenerateOfficialPdf = async () => {
+    if (!selectedRequest) return;
+    setIsRegeneratingPdf(true);
+    try {
+      const tpl = StorageService.getTemplateForLetterType(selectedRequest.letterTypeId);
+      
+      const officialNum = officialNumberInput || selectedRequest.officialLetterNumber || StorageService.generateNextOfficialLetterNumber();
+      const officialDate = officialDateInput || selectedRequest.officialLetterDate || new Date().toISOString();
+      
+      if (!officialNumberInput) {
+        setOfficialNumberInput(officialNum);
+      }
+
+      const applicantName = selectedRequest.applicantName || selectedRequest.formData?.nama || 'Pemohon';
+
+      const reqToBuild: SubmissionRequest = {
+        ...selectedRequest,
+        applicantName,
+        officialLetterNumber: officialNum,
+        officialLetterDate: officialDate,
+        status: modalStatus === 'Ditolak' ? 'Selesai' : (modalStatus || 'Selesai'),
+        formData: {
+          ...(selectedRequest.formData || {}),
+          nama: applicantName,
+        },
+      };
+
+      const doc = await PdfGenerator.buildOfficialLetterDoc(reqToBuild, tpl, settings);
+      const dataUri = doc.output('datauristring');
+      const fileName = `Surat_Resmi_${reqToBuild.requestNumber}.pdf`;
+
+      setUploadedOfficialFileUrl(dataUri);
+      setUploadedOfficialFileName(fileName);
+
+      const currentUser = StorageService.getCurrentUser();
+      const actorName = currentUser ? `${currentUser.name} (${currentUser.role})` : 'Staf TU Admin';
+
+      const saved = StorageService.updateRequestStatus(
+        reqToBuild.id,
+        'Selesai',
+        actorName,
+        modalNote || 'Surat resmi telah di-generate ulang dengan data pemohon terbaru.',
+        undefined,
+        officialNum,
+        officialDate,
+        dataUri,
+        fileName
+      );
+
+      if (saved) {
+        setSelectedRequest(saved);
+        setModalStatus('Selesai');
+      }
+      onRefresh();
+      alert(`Berhasil men-generate ulang PDF Surat Resmi untuk ${applicantName} (${reqToBuild.requestNumber}) dengan data terbaru!`);
+    } catch (err: any) {
+      console.error('Failed to regenerate PDF:', err);
+      alert('Gagal membuat PDF: ' + (err?.message || 'Error'));
+    } finally {
+      setIsRegeneratingPdf(false);
+    }
   };
 
   const handleSaveStatus = (e: React.FormEvent) => {
@@ -856,22 +920,54 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
                     />
                   </div>
 
-                  {/* Upload Berkas Surat Resmi (Manual Admin) */}
+                  {/* Upload Berkas Surat Resmi (Manual Admin) & Auto Re-Generate */}
                   <div className="sm:col-span-2 p-4 bg-white rounded-2xl border border-blue-200 shadow-xs space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
                         <Upload className="w-4 h-4 text-blue-700" />
-                        <span>Upload Berkas Surat Resmi (Hasil Pembuatan Manual Staf TU)</span>
+                        <span>Berkas Surat Resmi Diterbitkan</span>
                       </label>
                       {uploadedOfficialFileUrl && (
                         <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Dokumen Ter-Upload
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Dokumen Siap
                         </span>
                       )}
                     </div>
 
+                    {/* Tombol Generate Ulang PDF Otomatis Sesuai Data Pemohon Terbaru */}
+                    <div className="p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex items-center gap-1.5 font-extrabold text-blue-900 text-xs">
+                          <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span>Generate Ulang PDF Sesuai Data Pemohon Terbaru</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600">
+                          Membuat ulang dokumen PDF resmi dengan nama (<b>{selectedRequest.applicantName}</b>), nomor surat ({officialNumberInput || selectedRequest.officialLetterNumber || 'Baru'}), dan data terbaru.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRegenerateOfficialPdf}
+                        disabled={isRegeneratingPdf}
+                        className="px-4 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:bg-blue-400 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition shrink-0 cursor-pointer"
+                        title="Klik untuk membuat ulang PDF dengan data pemohon & nomor surat saat ini"
+                      >
+                        {isRegeneratingPdf ? (
+                          <>
+                            <Clock className="w-3.5 h-3.5 animate-spin" />
+                            <span>Membuat PDF...</span>
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Generate Ulang PDF</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
                     <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Upload berkas surat resmi (format PDF, Scan/Foto JPG/PNG, atau DOC) yang dibuat manual oleh Staf TU agar dapat dipratinjau & diunduh oleh pemohon di halaman Cek Status.
+                      Atau upload berkas surat resmi hasil scan/tanda tangan basah manual (format PDF, JPG/PNG, atau DOC) jika tidak menggunakan template digital otomatis.
                     </p>
 
                     {uploadedOfficialFileUrl ? (
@@ -885,7 +981,7 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
                               {uploadedOfficialFileName || `Surat_Resmi_${selectedRequest.requestNumber}.pdf`}
                             </p>
                             <span className="text-[10px] text-slate-500 block font-medium">
-                              Surat Resmi Hasil Upload Manual Admin
+                              File Dokumen Surat Resmi Tersimpan
                             </span>
                           </div>
                         </div>
@@ -949,16 +1045,53 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
+                      onClick={async () => {
+                        try {
+                          const tpl = StorageService.getTemplateForLetterType(selectedRequest.letterTypeId);
+                          const reqToPreview: SubmissionRequest = {
+                            ...selectedRequest,
+                            applicantName: selectedRequest.applicantName || selectedRequest.formData?.nama || 'Pemohon',
+                            officialLetterNumber: officialNumberInput || selectedRequest.officialLetterNumber || '420/001/TU-SMK/2026',
+                            officialLetterDate: officialDateInput || selectedRequest.officialLetterDate || new Date().toISOString(),
+                            formData: {
+                              ...(selectedRequest.formData || {}),
+                              nama: selectedRequest.applicantName || selectedRequest.formData?.nama,
+                            },
+                          };
+                          const blobUrl = await PdfGenerator.getOfficialLetterPdfBlobUrl(reqToPreview, tpl, settings);
+                          handleOpenPreview(blobUrl, `Surat_Resmi_${selectedRequest.requestNumber}.pdf`);
+                        } catch (e) {
+                          console.error(e);
+                        }
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                    >
+                      <EyeIcon className="w-4 h-4" />
+                      <span>Pratinjau PDF Baru</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => {
                         const fileUrlToUse = uploadedOfficialFileUrl || selectedRequest.issuedDocumentUrl;
-                        if (fileUrlToUse) {
+                        if (fileUrlToUse && (fileUrlToUse.startsWith('http://') || fileUrlToUse.startsWith('https://') || selectedRequest.formData?._isManualUpload)) {
                           handleDownloadFile(
                             fileUrlToUse,
                             uploadedOfficialFileName || selectedRequest.formData?._officialFileName || `Surat_Resmi_${selectedRequest.requestNumber}.pdf`
                           );
                         } else {
                           const tpl = StorageService.getTemplateForLetterType(selectedRequest.letterTypeId);
-                          PdfGenerator.generateOfficialLetterPdf(selectedRequest, tpl, settings);
+                          const reqToDownload: SubmissionRequest = {
+                            ...selectedRequest,
+                            applicantName: selectedRequest.applicantName || selectedRequest.formData?.nama || 'Pemohon',
+                            officialLetterNumber: officialNumberInput || selectedRequest.officialLetterNumber || '420/001/TU-SMK/2026',
+                            officialLetterDate: officialDateInput || selectedRequest.officialLetterDate || new Date().toISOString(),
+                            formData: {
+                              ...(selectedRequest.formData || {}),
+                              nama: selectedRequest.applicantName || selectedRequest.formData?.nama,
+                            },
+                          };
+                          PdfGenerator.generateOfficialLetterPdf(reqToDownload, tpl, settings);
                         }
                       }}
                       className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-xs transition cursor-pointer"

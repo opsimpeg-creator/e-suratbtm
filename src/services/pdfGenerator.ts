@@ -227,11 +227,18 @@ export const PdfGenerator = {
     y += 10;
 
     // Student Data Table
+    const applicantFullName = request.applicantName || request.formData?.nama || request.formData?.nama_lengkap || request.formData?.NamaPemohon || 'Pemohon';
+    const nis = request.formData?.nis || request.formData?.NIS || request.formData?.nomor_induk || '-';
+    const nisn = request.formData?.nisn || request.formData?.NISN || '-';
+    const kelas = request.formData?.kelas || request.formData?.Kelas || '-';
+    const jurusan = request.formData?.jurusan || request.formData?.Jurusan || request.formData?.konsentrasi_keahlian || '-';
+    const keperluan = request.formData?.keperluan || request.formData?.Keperluan || request.formData?.tujuan || 'Administrasi Tata Usaha Sekolah';
+
     const dataRows: [string, string][] = [
-      ['Nama Lengkap', request.formData?.nama || request.applicantName],
-      ['NIS / NISN', `${request.formData?.nis || '-'} / ${request.formData?.nisn || '-'}`],
-      ['Kelas / Jurusan', `${request.formData?.kelas || '-'} (${request.formData?.jurusan || '-'})`],
-      ['Keperluan', request.formData?.keperluan || 'Administrasi Tata Usaha Sekolah'],
+      ['Nama Lengkap', applicantFullName],
+      ['NIS / NISN', `${nis} / ${nisn}`],
+      ['Kelas / Jurusan', `${kelas} (${jurusan})`],
+      ['Keperluan', keperluan],
     ];
 
     dataRows.forEach(([lbl, val]) => {
