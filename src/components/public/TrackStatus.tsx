@@ -258,7 +258,7 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Masukkan Nomor Permohonan (Contoh: SRT-202608-0001)..."
+              placeholder="Masukkan Nomor Permohonan (Contoh: SRT-CONTOH-0001)..."
               className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none uppercase font-mono tracking-wider"
               required
             />
@@ -279,12 +279,12 @@ export const TrackStatus: React.FC<TrackStatusProps> = ({
             <button
               type="button"
               onClick={() => {
-                setSearchInput('SRT-202608-0001');
-                handleSearch('SRT-202608-0001');
+                setSearchInput('SRT-CONTOH-0001');
+                handleSearch('SRT-CONTOH-0001');
               }}
               className="font-mono font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer bg-blue-50 px-1.5 py-0.5 rounded"
             >
-              SRT-202608-0001
+              SRT-CONTOH-0001
             </button>
           </span>
           <button

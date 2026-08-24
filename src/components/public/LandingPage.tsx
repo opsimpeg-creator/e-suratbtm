@@ -152,13 +152,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <form onSubmit={handleTrackSubmit} className="space-y-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Nomor Permohonan (Contoh: SRT-202608-0001)
+                      Nomor Permohonan (Contoh: SRT-CONTOH-0001)
                     </label>
                     <input
                       type="text"
                       value={trackInput}
                       onChange={(e) => setTrackInput(e.target.value)}
-                      placeholder="Ketik SRT-202608-XXXX..."
+                      placeholder="Ketik SRT-CONTOH-0001..."
                       className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent uppercase font-mono tracking-wider"
                       required
                     />

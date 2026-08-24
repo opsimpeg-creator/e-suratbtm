@@ -515,7 +515,7 @@ export const INITIAL_FAQS: FAQItem[] = [
     id: 'faq-2',
     category: 'Pelacakan Status',
     question: 'Bagaimana cara mengecek status surat yang sudah diajukan?',
-    answer: 'Anda cukup memasukkan Nomor Permohonan (contoh: SRT-202608-0001) atau melakukan Scan QR Code bukti pengajuan pada halaman "Cek Status Surat".',
+    answer: 'Anda cukup memasukkan Nomor Permohonan (contoh: SRT-CONTOH-0001) atau melakukan Scan QR Code bukti pengajuan pada halaman "Cek Status Surat".',
   },
   {
     id: 'faq-3',
