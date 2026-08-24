@@ -98,7 +98,7 @@ export const PdfStamper = {
     const stampedBytes = await pdfDoc.save();
     
     // Convert to Blob and Data URI
-    const blob = new Blob([stampedBytes], { type: 'application/pdf' });
+    const blob = new Blob([stampedBytes as unknown as BlobPart], { type: 'application/pdf' });
     
     // Chunked base64 conversion to prevent call stack limits
     let binary = '';
@@ -191,7 +191,7 @@ export const PdfStamper = {
     });
 
     const pdfBytes = await pdfDoc.save();
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
 
     let binary = '';
     const bytes = new Uint8Array(pdfBytes);
