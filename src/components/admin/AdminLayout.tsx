@@ -69,7 +69,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       badgeColor: 'bg-amber-400 text-slate-950',
     },
     { id: 'pengguna', label: 'Pengguna & Hak Akses', icon: <Users className="w-4 h-4" />, roleReq: 'super_admin' },
-    { id: 'sync-spreadsheet', label: 'Sync Google Spreadsheet', icon: <Database className="w-4 h-4" /> },
+    { id: 'sync-spreadsheet', label: 'Sync Google Spreadsheet', icon: <Database className="w-4 h-4" />, roleReq: 'super_admin' },
     { id: 'pengaturan', label: 'Setting Sekolah', icon: <Settings className="w-4 h-4" />, roleReq: 'super_admin' },
   ];
 

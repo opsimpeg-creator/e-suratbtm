@@ -373,6 +373,17 @@ export default function App() {
           />
         );
       case 'pengguna':
+        if (currentUser.role !== 'super_admin') {
+          return (
+            <AdminDashboard
+              submissions={submissions}
+              letterTypes={letterTypes}
+              settings={settings}
+              setAdminTab={setActiveTab}
+              onSelectRequestDetail={() => setActiveTab('permohonan')}
+            />
+          );
+        }
         return (
           <UserManagement
             currentUser={currentUser}
@@ -382,6 +393,17 @@ export default function App() {
       case 'log-audit':
         return <AuditLogView />;
       case 'sync-spreadsheet':
+        if (currentUser.role !== 'super_admin') {
+          return (
+            <AdminDashboard
+              submissions={submissions}
+              letterTypes={letterTypes}
+              settings={settings}
+              setAdminTab={setActiveTab}
+              onSelectRequestDetail={() => setActiveTab('permohonan')}
+            />
+          );
+        }
         return (
           <SpreadsheetSyncPage
             settings={settings}
@@ -389,6 +411,17 @@ export default function App() {
           />
         );
       case 'pengaturan':
+        if (currentUser.role !== 'super_admin') {
+          return (
+            <AdminDashboard
+              submissions={submissions}
+              letterTypes={letterTypes}
+              settings={settings}
+              setAdminTab={setActiveTab}
+              onSelectRequestDetail={() => setActiveTab('permohonan')}
+            />
+          );
+        }
         return (
           <SettingsPage
             settings={settings}
