@@ -22,11 +22,14 @@ import {
   INITIAL_AUDIT_LOGS,
   INITIAL_COMPLAINTS
 } from '../data/defaultData';
-// Helper to detect dummy test items
+// Helper to detect dummy test items or ghost empty submissions
 const isDummySubmission = (s: any) => {
   if (!s) return true;
   const num = (s.requestNumber || '').trim();
   const name = (s.applicantName || '').trim().toLowerCase();
+  if (!num || num === 'SRT-000' || (!name || name === 'pemohon')) {
+    return true;
+  }
   return (
     num === 'SRT-202602-0001' ||
     num === 'SRT-202602-0002' ||

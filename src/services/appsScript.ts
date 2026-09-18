@@ -1030,6 +1030,14 @@ function getSheetDataAsJson(ss, sheetName) {
         obj['Ikon'] = data[i][j];
       }
     }
+    // Filter out empty ghost rows in Permohonan (e.g., empty rows with accidental space in status)
+    if (sheetName === 'Permohonan') {
+      var noPermohonan = obj['NoPermohonan'] ? String(obj['NoPermohonan']).trim() : '';
+      var namaPemohon = obj['NamaPemohon'] ? String(obj['NamaPemohon']).trim() : '';
+      if (!noPermohonan && !namaPemohon) {
+        continue;
+      }
+    }
     result.push(obj);
   }
   return result;
@@ -1930,6 +1938,14 @@ function logActivity(ss, user, action, details) {
       const seenSubIds = new Set<string>();
       for (let i = 0; i < permohonanList.length; i++) {
         const item = permohonanList[i];
+        const rawReqNum = String(item.NoPermohonan || item.requestNumber || '').trim();
+        const rawApplicantName = String(item.NamaPemohon || item.applicantName || '').trim();
+
+        // Abaikan baris kosong atau baris hantu tanpa NoPermohonan & NamaPemohon yang valid
+        if ((!rawReqNum || rawReqNum === 'SRT-000') && (!rawApplicantName || rawApplicantName.toLowerCase() === 'pemohon')) {
+          continue;
+        }
+
         let formData = {};
         try {
           formData = typeof item.FormData === 'string' ? JSON.parse(item.FormData) : (item.FormData || {});
@@ -1944,7 +1960,7 @@ function logActivity(ss, user, action, details) {
         }
         seenSubIds.add(itemId);
 
-        const reqNum = String(item.NoPermohonan || item.requestNumber || 'SRT-000');
+        const reqNum = rawReqNum || `SRT-AUTO-${i + 1}`;
         const existingSub = currentSubmissions.find(
           (s) => (s.requestNumber && s.requestNumber.trim() === reqNum.trim()) || s.id === itemId
         );
