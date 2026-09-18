@@ -328,24 +328,49 @@ function handleRoute(action, params) {
   if (action === 'saveAllUsers' || action === 'saveAllPengguna') {
     const sheet = ss.getSheetByName('Pengguna');
     const items = params.items || [];
-    const lastRow = sheet.getLastRow();
-    if (lastRow > 1) {
-      sheet.getRange(2, 1, lastRow - 1, 7).clearContent();
+    const data = sheet.getDataRange().getValues();
+    var rowMapById = {};
+    var rowMapByUsername = {};
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0]) rowMapById[String(data[i][0]).trim()] = i + 1;
+      if (data[i][1]) rowMapByUsername[String(data[i][1]).trim().toLowerCase()] = i + 1;
     }
+    var updatedCount = 0;
+    var insertedCount = 0;
     for (var k = 0; k < items.length; k++) {
       var item = items[k];
-      sheet.appendRow([
-        item.id,
+      var itmId = String(item.id || '').trim();
+      var itmUsername = String(item.username || '').trim().toLowerCase();
+      var targetRow = 0;
+      if (itmId && rowMapById[itmId]) {
+        targetRow = rowMapById[itmId];
+      } else if (itmUsername && rowMapByUsername[itmUsername]) {
+        targetRow = rowMapByUsername[itmUsername];
+      }
+
+      var rowValues = [
+        item.id || ('u-' + Date.now() + '-' + (k + 1)),
         item.username || '',
         item.password || 'admin123',
         item.name || '',
         item.role || 'admin_tu',
         item.email || '',
         item.createdAt || new Date().toISOString()
-      ]);
+      ];
+
+      if (targetRow > 0) {
+        sheet.getRange(targetRow, 1, 1, 7).setValues([rowValues]);
+        updatedCount++;
+      } else {
+        sheet.appendRow(rowValues);
+        var newRowNum = sheet.getLastRow();
+        if (itmId) rowMapById[itmId] = newRowNum;
+        if (itmUsername) rowMapByUsername[itmUsername] = newRowNum;
+        insertedCount++;
+      }
     }
-    logActivity(ss, 'Admin', 'SYNC_ALL_USERS', 'Sinkronisasi ' + items.length + ' pengguna');
-    return { success: true };
+    logActivity(ss, 'Admin', 'SYNC_ALL_USERS', 'Upsert ' + items.length + ' pengguna (' + updatedCount + ' diperbarui, ' + insertedCount + ' ditambahkan)');
+    return { success: true, updated: updatedCount, inserted: insertedCount };
   }
 
   if (action === 'deleteUser' || action === 'deletePengguna') {
@@ -2022,7 +2047,7 @@ function logActivity(ss, user, action, details) {
           settings.majors = mjrList;
         }
       }
-      StorageService.saveSettings(settings);
+      StorageService.saveSettings(settings, false);
 
       // Parse Users / Pengguna from Spreadsheet (Sync deletions and edits from Spreadsheet)
       if (Array.isArray(data.pengguna) && data.pengguna.length > 0) {
@@ -2045,7 +2070,17 @@ function logActivity(ss, user, action, details) {
           });
         }
         if (parsedUsers.length > 0) {
-          StorageService.saveUsers(parsedUsers);
+          // Merge with existing local users to guarantee recently added accounts are never accidentally dropped
+          const existingUsers = StorageService.getUsers();
+          const userMap = new Map<string, any>();
+          for (const u of existingUsers) {
+            if (u.username) userMap.set(u.username.toLowerCase(), u);
+          }
+          for (const u of parsedUsers) {
+            if (u.username) userMap.set(u.username.toLowerCase(), u);
+          }
+          const mergedUsers = Array.from(userMap.values());
+          StorageService.saveUsers(mergedUsers, false);
         }
       }
 

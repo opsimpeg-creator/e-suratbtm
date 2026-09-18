@@ -235,15 +235,17 @@ export const StorageService = {
     }
     return settings;
   },
-  saveSettings(settings: SchoolSettings): void {
+  saveSettings(settings: SchoolSettings, syncToAppsScript: boolean = true): void {
     setStored(KEYS.SETTINGS, settings);
 
-    // Background sync to Google Apps Script
-    import('./appsScript').then(({ AppsScriptService }) => {
-      AppsScriptService.sendNomorSuratToAppsScript(settings.letterNumberPattern, settings.currentSeqNumber).catch((err) => {
-        console.warn('Sync settings/nomorSurat to Apps Script error:', err);
+    if (syncToAppsScript) {
+      // Background sync to Google Apps Script only when requested
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.sendNomorSuratToAppsScript(settings.letterNumberPattern, settings.currentSeqNumber).catch((err) => {
+          console.warn('Sync settings/nomorSurat to Apps Script error:', err);
+        });
       });
-    });
+    }
   },
 
   // Class Management Helpers
@@ -328,20 +330,22 @@ export const StorageService = {
       status: u.status || 'active',
     }));
   },
-  saveUsers(users: User[]): void {
+  saveUsers(users: User[], syncToAppsScript: boolean = false): void {
     setStored(KEYS.USERS, users);
-    import('./appsScript').then(({ AppsScriptService }) => {
-      AppsScriptService.syncAllUsersToAppsScript().catch((err) => {
-        console.warn('Apps Script sync users error:', err);
+    if (syncToAppsScript) {
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.syncAllUsersToAppsScript().catch((err) => {
+          console.warn('Apps Script sync users error:', err);
+        });
       });
-    });
+    }
   },
   deleteUser(userId: string): boolean {
     const users = this.getUsers();
     const target = users.find((u) => u.id === userId);
     if (!target) return false;
     const filtered = users.filter((u) => u.id !== userId);
-    this.saveUsers(filtered);
+    this.saveUsers(filtered, false);
     import('./appsScript').then(({ AppsScriptService }) => {
       AppsScriptService.deleteUserFromAppsScript(userId, target.username).catch((err) => {
         console.warn('Apps Script delete user error:', err);
@@ -356,7 +360,7 @@ export const StorageService = {
     if (idx !== -1) {
       const newStatus = users[idx].status === 'inactive' ? 'active' : 'inactive';
       users[idx].status = newStatus;
-      this.saveUsers(users);
+      this.saveUsers(users, false);
       import('./appsScript').then(({ AppsScriptService }) => {
         AppsScriptService.sendUserToAppsScript(users[idx]).catch((err) => {
           console.warn('Apps Script update user error:', err);
@@ -372,7 +376,7 @@ export const StorageService = {
     const idx = users.findIndex((u) => u.id === userId);
     if (idx !== -1) {
       users[idx].password = newPassword;
-      this.saveUsers(users);
+      this.saveUsers(users, false);
       import('./appsScript').then(({ AppsScriptService }) => {
         AppsScriptService.sendUserToAppsScript(users[idx]).catch((err) => {
           console.warn('Apps Script update password error:', err);
@@ -881,7 +885,7 @@ export const StorageService = {
 
     // Update sequence
     settings.currentSeqNumber = seq + 1;
-    this.saveSettings(settings);
+    this.saveSettings(settings, false);
 
     return number;
   },

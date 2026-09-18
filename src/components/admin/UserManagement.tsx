@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
 import { StorageService } from '../../services/storage';
+import { AppsScriptService } from '../../services/appsScript';
 import { hashPassword, isSha256 } from '../../services/hashUtils';
 import { Users, Plus, ShieldCheck, UserCheck, Trash2, X, Key, Eye, EyeOff, Lock, Check, ToggleLeft, ToggleRight, AlertTriangle } from 'lucide-react';
 
@@ -57,8 +58,23 @@ export const UserManagement: React.FC<UserManagementProps> = ({ currentUser, onR
     };
 
     const currentList = StorageService.getUsers();
-    currentList.push(newUser);
-    StorageService.saveUsers(currentList);
+    const existingIdx = currentList.findIndex(
+      (u) => u.username.toLowerCase() === newUser.username.toLowerCase()
+    );
+    if (existingIdx >= 0) {
+      currentList[existingIdx] = { ...currentList[existingIdx], ...newUser, id: currentList[existingIdx].id };
+    } else {
+      currentList.push(newUser);
+    }
+
+    // Save locally without triggering circular sync
+    StorageService.saveUsers(currentList, false);
+
+    // Kirim langsung ke Google Spreadsheet secara individual (upsert non-destruktif)
+    AppsScriptService.sendUserToAppsScript(newUser).catch((err) => {
+      console.warn('Gagal sinkronisasi user baru ke Apps Script:', err);
+    });
+
     StorageService.addAuditLog(currentUser.username, 'TAMBAH_USER', `Menambahkan akun baru: ${username} (${role})`);
     refreshUsers();
     setModalOpen(false);
