@@ -22,31 +22,30 @@ import {
   INITIAL_AUDIT_LOGS,
   INITIAL_COMPLAINTS
 } from '../data/defaultData';
-import {
-  seedFirestoreIfEmpty,
-  subscribeToFirebase,
-  saveSettingsToFirebase,
-  saveUserToFirebase,
-  deleteUserFromFirebase,
-  saveUsersListToFirebase,
-  saveSubmissionToFirebase,
-  replaceSubmissionsInFirebase,
-  deleteSubmissionFromFirebase,
-  saveLetterTypeToFirebase,
-  replaceLetterTypesInFirebase,
-  deleteLetterTypeFromFirebase,
-  saveFormFieldsToFirebase,
-  replaceFormFieldsInFirebase,
-  saveSingleFormFieldToFirebase,
-  deleteFormFieldFromFirebase,
-  saveTemplateToFirebase,
-  saveAuditLogToFirebase,
-  saveComplaintToFirebase,
-  replaceComplaintsInFirebase,
-  deleteComplaintFromFirebase,
-  isDummySubmission,
-  isDummyComplaint
-} from './firebase';
+// Helper to detect dummy test items
+const isDummySubmission = (s: any) => {
+  if (!s) return true;
+  const num = (s.requestNumber || '').trim();
+  const name = (s.applicantName || '').trim().toLowerCase();
+  return (
+    num === 'SRT-202602-0001' ||
+    num === 'SRT-202602-0002' ||
+    name.includes('ahmad fadillah') ||
+    name.includes('siti nurhaliza')
+  );
+};
+
+const isDummyComplaint = (c: any) => {
+  if (!c) return true;
+  const num = (c.ticketNumber || '').trim();
+  const name = (c.senderName || '').trim().toLowerCase();
+  return (
+    num === 'TKT-202602-0001' ||
+    num === 'TKT-202602-0002' ||
+    name.includes('budi santoso') ||
+    name.includes('dewi sartika')
+  );
+};
 
 const KEYS = {
   SETTINGS: 'tu_esurat_settings_v1',
@@ -116,6 +115,18 @@ if (typeof window !== 'undefined' && window.localStorage) {
         }
       }
     }
+
+    // Purge obsolete user 'u3' (Sari Indah / loket) from local storage
+    const rawUsers = localStorage.getItem(KEYS.USERS);
+    if (rawUsers) {
+      const parsedU = JSON.parse(rawUsers);
+      if (Array.isArray(parsedU)) {
+        const cleanedU = parsedU.filter((u: any) => u.id !== 'u3' && u.username !== 'loket');
+        if (cleanedU.length !== parsedU.length) {
+          localStorage.setItem(KEYS.USERS, JSON.stringify(cleanedU));
+        }
+      }
+    }
   } catch (e) {
     // ignore
   }
@@ -146,49 +157,9 @@ function setStored<T>(key: string, value: T, notify = true): void {
 
 // Storage API Engine
 export const StorageService = {
-  // Initialize Real-time Centralized Database (Firebase Firestore)
-  initFirebase(onUpdate?: () => void): () => void {
-    // Seed default data if database is fresh
-    seedFirestoreIfEmpty().catch((err) => console.warn('Seed Firestore error:', err));
-
-    // Subscribe to Firestore changes
-    return subscribeToFirebase((data) => {
-      let changed = false;
-      if (data.settings) {
-        setStored(KEYS.SETTINGS, data.settings);
-        changed = true;
-      }
-      if (data.users && data.users.length > 0) {
-        setStored(KEYS.USERS, data.users);
-        changed = true;
-      }
-      if (data.letterTypes && data.letterTypes.length > 0) {
-        setStored(KEYS.LETTER_TYPES, data.letterTypes);
-        changed = true;
-      }
-      if (data.formFields && data.formFields.length > 0) {
-        setStored(KEYS.FORM_FIELDS, data.formFields);
-        changed = true;
-      }
-      if (data.templates && data.templates.length > 0) {
-        setStored(KEYS.TEMPLATES, data.templates);
-        changed = true;
-      }
-      if (data.submissions) {
-        setStored(KEYS.SUBMISSIONS, data.submissions);
-        changed = true;
-      }
-      if (data.auditLogs) {
-        setStored(KEYS.AUDIT_LOGS, data.auditLogs);
-        changed = true;
-      }
-      if (data.complaints) {
-        setStored(KEYS.COMPLAINTS, data.complaints);
-        changed = true;
-      }
-
-      if (changed && onUpdate) onUpdate();
-    });
+  // Google Spreadsheet is the 100% Single Source of Truth
+  initFirebase(_onUpdate?: () => void): () => void {
+    return () => {};
   },
 
   // Settings
@@ -228,13 +199,11 @@ export const StorageService = {
     }
     if (dirty) {
       setStored(KEYS.SETTINGS, settings);
-      saveSettingsToFirebase(settings);
     }
     return settings;
   },
   saveSettings(settings: SchoolSettings): void {
     setStored(KEYS.SETTINGS, settings);
-    saveSettingsToFirebase(settings);
 
     // Background sync to Google Apps Script
     import('./appsScript').then(({ AppsScriptService }) => {
@@ -328,7 +297,6 @@ export const StorageService = {
   },
   saveUsers(users: User[]): void {
     setStored(KEYS.USERS, users);
-    saveUsersListToFirebase(users);
     import('./appsScript').then(({ AppsScriptService }) => {
       AppsScriptService.syncAllUsersToAppsScript().catch((err) => {
         console.warn('Apps Script sync users error:', err);
@@ -341,7 +309,11 @@ export const StorageService = {
     if (!target) return false;
     const filtered = users.filter((u) => u.id !== userId);
     this.saveUsers(filtered);
-    deleteUserFromFirebase(userId);
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.deleteUserFromAppsScript(userId, target.username).catch((err) => {
+        console.warn('Apps Script delete user error:', err);
+      });
+    });
     this.addAuditLog('super_admin', 'DELETE_USER', `Menghapus akun pengguna: ${target.username} (${target.name})`);
     return true;
   },
@@ -352,7 +324,11 @@ export const StorageService = {
       const newStatus = users[idx].status === 'inactive' ? 'active' : 'inactive';
       users[idx].status = newStatus;
       this.saveUsers(users);
-      saveUserToFirebase(users[idx]);
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.sendUserToAppsScript(users[idx]).catch((err) => {
+          console.warn('Apps Script update user error:', err);
+        });
+      });
       this.addAuditLog('super_admin', 'TOGGLE_USER_STATUS', `Mengubah status pengguna ${users[idx].username} menjadi: ${newStatus}`);
       return true;
     }
@@ -364,7 +340,11 @@ export const StorageService = {
     if (idx !== -1) {
       users[idx].password = newPassword;
       this.saveUsers(users);
-      saveUserToFirebase(users[idx]);
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.sendUserToAppsScript(users[idx]).catch((err) => {
+          console.warn('Apps Script update password error:', err);
+        });
+      });
       this.addAuditLog('super_admin', 'RESET_PASSWORD', `Mengubah password untuk pengguna: ${users[idx].username}`);
       return true;
     }
@@ -418,7 +398,11 @@ export const StorageService = {
     );
     const cleanTypes = types.filter((t) => !dummyLetterTypeIds.has(t.id));
     setStored(KEYS.LETTER_TYPES, cleanTypes);
-    replaceLetterTypesInFirebase(cleanTypes);
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.syncAllLetterTypesToAppsScript().catch((err) => {
+        console.warn('Apps Script sync letter types notice:', err);
+      });
+    });
   },
   addLetterType(newType: Omit<LetterType, 'id'>): LetterType {
     const types = this.getLetterTypes();
@@ -428,7 +412,6 @@ export const StorageService = {
     };
     types.push(created);
     this.saveLetterTypes(types);
-    saveLetterTypeToFirebase(created);
     this.addAuditLog('super_admin', 'TAMBAH_JENIS_SURAT', `Menambahkan jenis surat baru: ${created.name}`);
 
     import('./appsScript').then(({ AppsScriptService }) => {
@@ -445,7 +428,6 @@ export const StorageService = {
     if (idx !== -1) {
       types[idx] = { ...types[idx], ...updates };
       this.saveLetterTypes(types);
-      saveLetterTypeToFirebase(types[idx]);
       this.addAuditLog('super_admin', 'EDIT_JENIS_SURAT', `Memperbarui jenis surat ID: ${id}`);
 
       import('./appsScript').then(({ AppsScriptService }) => {
@@ -458,7 +440,6 @@ export const StorageService = {
   deleteLetterType(id: string): void {
     const types = this.getLetterTypes().filter((t) => t.id !== id);
     this.saveLetterTypes(types);
-    deleteLetterTypeFromFirebase(id);
     const fields = this.getFormFields().filter((f) => f.letterTypeId !== id);
     this.saveFormFields(fields);
     this.addAuditLog('super_admin', 'HAPUS_JENIS_SURAT', `Menghapus jenis surat ID: ${id}`);
@@ -502,13 +483,10 @@ export const StorageService = {
     ]);
     const cleanFields = fields.filter((f) => !dummyFieldIds.has(f.id) && !['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
     setStored(KEYS.FORM_FIELDS, cleanFields);
-    // Non-blocking sync to Firebase
-    Promise.resolve().then(async () => {
-      try {
-        await replaceFormFieldsInFirebase(cleanFields);
-      } catch (e) {
-        console.warn('Firebase form fields sync notice:', e);
-      }
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.syncAllFieldsToAppsScript(cleanFields).catch((err) => {
+        console.warn('Apps Script sync fields notice:', err);
+      });
     });
   },
   async saveSingleFormField(field: FormField): Promise<void> {
@@ -520,25 +498,19 @@ export const StorageService = {
       allFields.push(field);
     }
     setStored(KEYS.FORM_FIELDS, allFields);
-    // Non-blocking sync to Firebase
-    Promise.resolve().then(async () => {
-      try {
-        await saveSingleFormFieldToFirebase(field);
-      } catch (e) {
-        console.warn('Firebase single form field sync notice:', e);
-      }
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.sendFieldToAppsScript(field).catch((err) => {
+        console.warn('Apps Script save field notice:', err);
+      });
     });
   },
   async deleteFormField(fieldId: string): Promise<void> {
     const allFields = this.getFormFields().filter((f) => f.id !== fieldId);
     setStored(KEYS.FORM_FIELDS, allFields);
-    // Non-blocking delete from Firebase
-    Promise.resolve().then(async () => {
-      try {
-        await deleteFormFieldFromFirebase(fieldId);
-      } catch (e) {
-        console.warn('Firebase delete form field notice:', e);
-      }
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.deleteFieldFromAppsScript(fieldId).catch((err) => {
+        console.warn('Apps Script delete field notice:', err);
+      });
     });
   },
 
@@ -558,7 +530,6 @@ export const StorageService = {
       templates.push(template);
     }
     setStored(KEYS.TEMPLATES, templates);
-    saveTemplateToFirebase(template);
     this.addAuditLog('admin_tu', 'UPDATE_TEMPLATE', `Memperbarui template surat ID: ${template.id}`);
   },
 
@@ -630,7 +601,6 @@ export const StorageService = {
   },
   saveSubmissions(submissions: SubmissionRequest[]): void {
     setStored(KEYS.SUBMISSIONS, submissions);
-    replaceSubmissionsInFirebase(submissions);
   },
   deleteSubmission(id: string): boolean {
     const list = this.getSubmissions();
@@ -638,7 +608,6 @@ export const StorageService = {
     if (!target) return false;
     const filtered = list.filter((s) => s.id !== id);
     setStored(KEYS.SUBMISSIONS, filtered);
-    deleteSubmissionFromFirebase(id);
     this.addAuditLog('admin', 'DELETE_SUBMISSION', `Menghapus permohonan: ${target.requestNumber} (${target.applicantName})`);
 
     // Sync delete to Google Apps Script
@@ -650,10 +619,8 @@ export const StorageService = {
     return true;
   },
   clearAllSubmissions(): void {
-    const list = this.getSubmissions();
-    list.forEach((s) => deleteSubmissionFromFirebase(s.id));
     setStored(KEYS.SUBMISSIONS, []);
-    this.addAuditLog('admin', 'CLEAR_SUBMISSIONS', 'Mengosongkan seluruh data permohonan di aplikasi lokal dan Firebase.');
+    this.addAuditLog('admin', 'CLEAR_SUBMISSIONS', 'Mengosongkan seluruh data permohonan di aplikasi lokal.');
   },
 
   calculateNextRequestNumber(submissionsList?: SubmissionRequest[]): string {
@@ -721,7 +688,6 @@ export const StorageService = {
 
     submissions.unshift(newRequest);
     setStored(KEYS.SUBMISSIONS, submissions);
-    saveSubmissionToFirebase(newRequest);
     this.addAuditLog('Sistem', 'AJUKAN_SURAT', `Pengajuan surat baru: ${requestNumber} (${data.applicantName})`);
 
     // Otomatis kirim ke Google Apps Script Web App jika URL terkonfigurasi
@@ -774,7 +740,6 @@ export const StorageService = {
         if (idx !== -1) {
           list[idx] = newRequest;
           setStored(KEYS.SUBMISSIONS, list);
-          saveSubmissionToFirebase(newRequest);
         }
       }
     } catch (e) {
@@ -828,7 +793,6 @@ export const StorageService = {
 
     submissions[idx] = req;
     setStored(KEYS.SUBMISSIONS, submissions);
-    saveSubmissionToFirebase(req);
 
     this.addAuditLog(actorName, 'UPDATE_STATUS_SURAT', `Status permohonan ${req.requestNumber} diubah ke ${newStatus}`);
 
@@ -878,7 +842,6 @@ export const StorageService = {
     logs.unshift(newLog);
     if (logs.length > 100) logs.length = 100;
     setStored(KEYS.AUDIT_LOGS, logs);
-    saveAuditLogToFirebase(newLog);
   },
 
   // Complaints / Helpdesk Tickets API
@@ -895,7 +858,6 @@ export const StorageService = {
 
   saveComplaints(complaints: ComplaintTicket[]): void {
     setStored(KEYS.COMPLAINTS, complaints);
-    replaceComplaintsInFirebase(complaints);
   },
 
   getComplaintById(id: string): ComplaintTicket | undefined {
@@ -943,7 +905,13 @@ export const StorageService = {
 
     const updated = [newTicket, ...list];
     this.saveComplaints(updated);
-    saveComplaintToFirebase(newTicket);
+
+    // Sync to Google Apps Script
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.sendComplaintToAppsScript(newTicket).catch((err) => {
+        console.warn('Sync complaint to Apps Script error:', err);
+      });
+    });
 
     this.addAuditLog('System', 'CREATE_COMPLAINT', `Pengaduan baru diterima: ${ticketNumber} dari ${newTicket.senderName}`);
     return newTicket;
@@ -971,7 +939,13 @@ export const StorageService = {
 
     list[idx] = updatedTicket;
     this.saveComplaints(list);
-    saveComplaintToFirebase(updatedTicket);
+
+    // Sync to Google Apps Script
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.sendComplaintToAppsScript(updatedTicket).catch((err) => {
+        console.warn('Sync complaint update to Apps Script error:', err);
+      });
+    });
 
     this.addAuditLog(
       actorName,
@@ -988,7 +962,13 @@ export const StorageService = {
 
     const filtered = list.filter((c) => c.id !== ticketId);
     this.saveComplaints(filtered);
-    deleteComplaintFromFirebase(ticketId);
+
+    // Sync delete to Google Apps Script
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.deleteComplaintInAppsScript(ticketId, target.ticketNumber).catch((err) => {
+        console.warn('Sync delete complaint error:', err);
+      });
+    });
 
     this.addAuditLog(
       'Staf TU Admin',
@@ -999,9 +979,7 @@ export const StorageService = {
   },
 
   clearAllComplaints(): void {
-    const list = this.getComplaints();
     this.saveComplaints([]);
-    list.forEach((c) => deleteComplaintFromFirebase(c.id));
     this.addAuditLog('super_admin', 'CLEAR_COMPLAINTS', 'Mengosongkan seluruh data pengaduan.');
   },
 
@@ -1030,12 +1008,10 @@ export const StorageService = {
       if (data.formFields) this.saveFormFields(data.formFields);
       if (data.templates) {
         setStored(KEYS.TEMPLATES, data.templates);
-        data.templates.forEach((t: LetterTemplate) => saveTemplateToFirebase(t));
       }
       if (data.submissions) this.saveSubmissions(data.submissions);
       if (data.auditLogs) {
         setStored(KEYS.AUDIT_LOGS, data.auditLogs);
-        data.auditLogs.forEach((l: AuditLog) => saveAuditLogToFirebase(l));
       }
       this.addAuditLog('super_admin', 'RESTORE_DATABASE', 'Memulihkan database dari file cadangan JSON.');
       return true;

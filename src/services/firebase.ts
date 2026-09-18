@@ -206,8 +206,21 @@ export function subscribeToFirebase(callback: (data: Partial<{
     collection(db, COLLECTIONS.USERS),
     (snap) => {
       if (!snap.empty) {
-        const users = snap.docs.map((d) => d.data() as User);
-        callback({ users });
+        // Auto-cleanup obsolete / removed user 'u3' or 'loket' from Firestore database
+        snap.docs.forEach((docSnapshot) => {
+          const data = docSnapshot.data() as any;
+          if (docSnapshot.id === 'u3' || data?.username === 'loket') {
+            deleteDoc(doc(db, COLLECTIONS.USERS, docSnapshot.id)).catch(() => {});
+          }
+        });
+
+        const users = snap.docs
+          .filter((d) => d.id !== 'u3' && (d.data() as any)?.username !== 'loket')
+          .map((d) => d.data() as User);
+
+        if (users.length > 0) {
+          callback({ users });
+        }
       }
     },
     handleSnapshotError('users')

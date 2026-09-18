@@ -1828,6 +1828,31 @@ function logActivity(ss, user, action, details) {
       }
       StorageService.saveSettings(settings);
 
+      // Parse Users / Pengguna from Spreadsheet (Sync deletions and edits from Spreadsheet)
+      if (Array.isArray(data.pengguna) && data.pengguna.length > 0) {
+        const parsedUsers: any[] = [];
+        for (const item of data.pengguna) {
+          const uId = String(item.ID || item.id || '').trim();
+          const uUsername = String(item.Username || item.username || '').trim();
+          if (!uId || !uUsername) continue;
+          if (uId === 'u3' || uUsername === 'loket') continue; // Obsolete role
+
+          parsedUsers.push({
+            id: uId,
+            username: uUsername,
+            password: String(item.Password || item.password || '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
+            name: String(item.Nama || item.name || uUsername),
+            role: String(item.Role || item.role || 'admin_tu').toLowerCase() === 'super_admin' ? 'super_admin' : 'admin_tu',
+            email: String(item.Email || item.email || ''),
+            createdAt: String(item.CreatedAt || item.createdAt || new Date().toISOString()),
+            status: 'active',
+          });
+        }
+        if (parsedUsers.length > 0) {
+          StorageService.saveUsers(parsedUsers);
+        }
+      }
+
       // If pengaduanList is empty in getAllData, query ?action=getAllComplaints as fallback
       if (!rawComplaintsList || rawComplaintsList.length === 0) {
         try {

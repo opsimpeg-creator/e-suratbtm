@@ -124,6 +124,8 @@ export default function App() {
   };
 
   // Sync state helpers
+  const [isSyncingSpreadsheet, setIsSyncingSpreadsheet] = useState<boolean>(false);
+
   const refreshAllData = () => {
     setSettings(StorageService.getSettings());
     setLetterTypes(StorageService.getLetterTypes());
@@ -132,12 +134,33 @@ export default function App() {
     setCurrentUser(StorageService.getCurrentUser());
   };
 
-  // Initialize Real-time Centralized Database (Firebase Firestore)
-  useEffect(() => {
-    const unsub = StorageService.initFirebase(() => {
-      refreshAllData();
-    });
+  const syncFromSpreadsheet = async (showToastFeedback = false) => {
+    setIsSyncingSpreadsheet(true);
+    try {
+      // 1. Fetch live submissions, complaints, users, master classes from Google Spreadsheet
+      await AppsScriptService.fetchDataFromAppsScript(false);
+      // 2. Fetch live letter types from sheet JenisSurat
+      await AppsScriptService.fetchLetterTypesFromSpreadsheet(true);
+      // 3. Fetch live form fields from sheet KolomFormulir
+      await AppsScriptService.fetchFieldsFromSpreadsheet(true);
 
+      refreshAllData();
+
+      if (showToastFeedback) {
+        showToast('success', 'Data Spreadsheet Tersinkron', 'Data permohonan, pengaduan, pengguna, dan formulir berhasil diperbarui langsung dari Google Spreadsheet.');
+      }
+    } catch (e: any) {
+      console.warn('Sync spreadsheet notice:', e);
+      if (showToastFeedback) {
+        showToast('info', 'Sinkronisasi Tertunda', 'Menggunakan data tersimpan sementara waktu.');
+      }
+    } finally {
+      setIsSyncingSpreadsheet(false);
+    }
+  };
+
+  // Google Spreadsheet is the 100% Single Source of Truth
+  useEffect(() => {
     const handleStorageUpdate = () => {
       refreshAllData();
     };
@@ -145,44 +168,16 @@ export default function App() {
     window.addEventListener('tu_storage_updated', handleStorageUpdate);
     window.addEventListener('storage', handleStorageUpdate);
 
-    // Background polling from Google Apps Script / Google Spreadsheet
-    let failedAttempts = 0;
-    const triggerAppsScriptSync = () => {
-      const currentSettings = StorageService.getSettings();
-      if ((currentSettings.webAppUrl || currentSettings.spreadsheetId) && failedAttempts < 5) {
-        // Fetch freshest LetterTypes from sheet JenisSurat
-        AppsScriptService.fetchLetterTypesFromSpreadsheet(true)
-          .then((lRes) => {
-            if (lRes.success) {
-              refreshAllData();
-            }
-          })
-          .catch(() => {});
+    // Initial fetch from Google Spreadsheet on startup
+    syncFromSpreadsheet(false);
 
-        // Fetch submissions, complaints, fields, and master data
-        AppsScriptService.fetchDataFromAppsScript(true)
-          .then((res) => {
-            if (res.success) {
-              failedAttempts = 0;
-              refreshAllData();
-            } else {
-              failedAttempts++;
-            }
-          })
-          .catch(() => {
-            failedAttempts++;
-          });
-      }
-    };
-
-    // Immediate initial sync on mount
-    triggerAppsScriptSync();
-
-    const checkSpreadsheetInterval = setInterval(triggerAppsScriptSync, 30000);
+    // Auto-poll Google Spreadsheet every 25 seconds for updates
+    const syncInterval = setInterval(() => {
+      syncFromSpreadsheet(false);
+    }, 25000);
 
     return () => {
-      unsub();
-      clearInterval(checkSpreadsheetInterval);
+      clearInterval(syncInterval);
       window.removeEventListener('tu_storage_updated', handleStorageUpdate);
       window.removeEventListener('storage', handleStorageUpdate);
     };
@@ -463,6 +458,8 @@ export default function App() {
           settings={settings}
           submissions={submissions}
           complaints={complaints}
+          isSyncing={isSyncingSpreadsheet}
+          onRefreshSpreadsheet={() => syncFromSpreadsheet(true)}
         >
           {renderAdminContent()}
         </AdminLayout>
