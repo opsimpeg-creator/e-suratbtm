@@ -59,7 +59,7 @@ const KEYS = {
   CURRENT_USER: 'tu_esurat_current_user_v1',
 };
 
-// Immediate Synchronous Purge: clean any residual dummy entries from browser storage before components load
+// Immediate Synchronous Purge: clean any residual dummy entries and duplicate IDs from browser storage before components load
 if (typeof window !== 'undefined' && window.localStorage) {
   try {
     const rawSub = localStorage.getItem(KEYS.SUBMISSIONS);
@@ -67,8 +67,21 @@ if (typeof window !== 'undefined' && window.localStorage) {
       const parsed = JSON.parse(rawSub);
       if (Array.isArray(parsed)) {
         const cleaned = parsed.filter((s: any) => !isDummySubmission(s));
-        if (cleaned.length !== parsed.length) {
-          localStorage.setItem(KEYS.SUBMISSIONS, JSON.stringify(cleaned));
+        const seenIds = new Set<string>();
+        let hasDuplicate = false;
+        const deduplicated = cleaned.map((item: any, idx: number) => {
+          if (!item.id || seenIds.has(item.id)) {
+            hasDuplicate = true;
+            const uniqueId = `sub-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+            seenIds.add(uniqueId);
+            return { ...item, id: uniqueId };
+          }
+          seenIds.add(item.id);
+          return item;
+        });
+
+        if (cleaned.length !== parsed.length || hasDuplicate) {
+          localStorage.setItem(KEYS.SUBMISSIONS, JSON.stringify(deduplicated));
         }
       }
     }
@@ -78,8 +91,21 @@ if (typeof window !== 'undefined' && window.localStorage) {
       const parsed = JSON.parse(rawComp);
       if (Array.isArray(parsed)) {
         const cleaned = parsed.filter((c: any) => !isDummyComplaint(c));
-        if (cleaned.length !== parsed.length) {
-          localStorage.setItem(KEYS.COMPLAINTS, JSON.stringify(cleaned));
+        const seenCompIds = new Set<string>();
+        let hasDuplicateComp = false;
+        const deduplicatedComp = cleaned.map((item: any, idx: number) => {
+          if (!item.id || seenCompIds.has(item.id)) {
+            hasDuplicateComp = true;
+            const uniqueId = `tkt-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+            seenCompIds.add(uniqueId);
+            return { ...item, id: uniqueId };
+          }
+          seenCompIds.add(item.id);
+          return item;
+        });
+
+        if (cleaned.length !== parsed.length || hasDuplicateComp) {
+          localStorage.setItem(KEYS.COMPLAINTS, JSON.stringify(deduplicatedComp));
         }
       }
     }
@@ -168,6 +194,10 @@ export const StorageService = {
     let dirty = false;
     if (!settings.spreadsheetId || settings.spreadsheetId === '1buGZ0ySTwxfocJLbEic8eRfRk2R5_serZtdJUEvVZEs') {
       settings.spreadsheetId = '1lQ4BNn0l9Qjp06g-QS0ilD1I8-2nX4pK7a4qbRv34OI';
+      dirty = true;
+    }
+    if (!settings.webAppUrl || settings.webAppUrl.includes('AKfycbx...')) {
+      settings.webAppUrl = 'https://script.google.com/macros/s/AKfycbxeG-eeKjzROeqMsaK_LNpTWDLmK6FH9fIlUHqYill11cWaFktFMbmGhZGaq8TMDk6cfQ/exec';
       dirty = true;
     }
     if (!settings.classes || settings.classes.length === 0) {
@@ -360,35 +390,43 @@ export const StorageService = {
   // Letter Types
   getLetterTypes(): LetterType[] {
     const list = getStored<LetterType[]>(KEYS.LETTER_TYPES, []);
-    if (list && list.length > 0) {
-      // Filter out obsolete dummy IDs if custom / spreadsheet-synced letter types exist
-      const hasSpreadsheetLetterTypes = list.some(
-        (t) => t.id !== 'lt-1' && t.id !== 'lt-2' && t.id !== 'lt-3' && t.id !== 'lt-4' && t.id !== 'lt-5' && t.id !== 'lt-6'
-      );
-      const dummyLetterTypeIds = new Set(
-        hasSpreadsheetLetterTypes ? ['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'] : ['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6']
-      );
+    const sourceList = list && list.length > 0 ? list : INITIAL_LETTER_TYPES;
 
-      // Deduplicate by code if any duplicates exist (e.g. SKAS with lt-1 and lt-1787536998956)
-      const seenCodes = new Set<string>();
-      const deduped: LetterType[] = [];
-      for (const t of list) {
-        if (dummyLetterTypeIds.has(t.id)) continue;
-        const codeKey = (t.code || t.name).trim().toUpperCase();
-        if (seenCodes.has(codeKey)) continue;
+    // Filter out obsolete dummy IDs if custom / spreadsheet-synced letter types exist
+    const hasSpreadsheetLetterTypes = sourceList.some(
+      (t) => t.id !== 'lt-1' && t.id !== 'lt-2' && t.id !== 'lt-3' && t.id !== 'lt-4' && t.id !== 'lt-5' && t.id !== 'lt-6'
+    );
+    const dummyLetterTypeIds = new Set(
+      hasSpreadsheetLetterTypes ? ['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'] : ['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6']
+    );
+
+    // Deduplicate by code if any duplicates exist (e.g. SKAS with lt-1 and lt-1787536998956)
+    const seenCodes = new Set<string>();
+    const deduped: LetterType[] = [];
+    for (const t of sourceList) {
+      if (dummyLetterTypeIds.has(t.id)) continue;
+      const codeKey = (t.code || t.name).trim().toUpperCase();
+      if (seenCodes.has(codeKey)) continue;
+      seenCodes.add(codeKey);
+      deduped.push(t);
+    }
+
+    // Merge in any initial letter types if missing from local storage
+    for (const initType of INITIAL_LETTER_TYPES) {
+      const codeKey = (initType.code || initType.name).trim().toUpperCase();
+      if (!seenCodes.has(codeKey)) {
         seenCodes.add(codeKey);
-        deduped.push(t);
-      }
-
-      if (deduped.length > 0) {
-        deduped.sort((a, b) => (a.order || 0) - (b.order || 0));
-        return deduped;
+        deduped.push(initType);
       }
     }
-    // If local cache is totally empty and not yet synced from spreadsheet, fallback to INITIAL_LETTER_TYPES (or empty)
-    return INITIAL_LETTER_TYPES.filter((t) => t.code === 'SKAS');
+
+    if (deduped.length > 0) {
+      deduped.sort((a, b) => (a.order || 0) - (b.order || 0));
+      return deduped;
+    }
+    return INITIAL_LETTER_TYPES;
   },
-  saveLetterTypes(types: LetterType[]): void {
+  saveLetterTypes(types: LetterType[], pushToAppsScript = false): void {
     // Filter out dummy/obsolete types
     const hasSpreadsheetLetterTypes = types.some(
       (t) => t.id !== 'lt-1' && t.id !== 'lt-2' && t.id !== 'lt-3' && t.id !== 'lt-4' && t.id !== 'lt-5' && t.id !== 'lt-6'
@@ -398,11 +436,15 @@ export const StorageService = {
     );
     const cleanTypes = types.filter((t) => !dummyLetterTypeIds.has(t.id));
     setStored(KEYS.LETTER_TYPES, cleanTypes);
-    import('./appsScript').then(({ AppsScriptService }) => {
-      AppsScriptService.syncAllLetterTypesToAppsScript().catch((err) => {
-        console.warn('Apps Script sync letter types notice:', err);
+
+    // Only push to Apps Script when explicitly requested
+    if (pushToAppsScript) {
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.syncAllLetterTypesToAppsScript().catch((err) => {
+          console.warn('Apps Script sync letter types notice:', err);
+        });
       });
-    });
+    }
   },
   addLetterType(newType: Omit<LetterType, 'id'>): LetterType {
     const types = this.getLetterTypes();
@@ -475,7 +517,7 @@ export const StorageService = {
     );
     return fields.sort((a, b) => a.order - b.order);
   },
-  async saveFormFields(fields: FormField[]): Promise<void> {
+  async saveFormFields(fields: FormField[], syncToCloud: boolean = true): Promise<void> {
     const dummyFieldIds = new Set([
       'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108', 'f-109',
       'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
@@ -483,11 +525,13 @@ export const StorageService = {
     ]);
     const cleanFields = fields.filter((f) => !dummyFieldIds.has(f.id) && !['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
     setStored(KEYS.FORM_FIELDS, cleanFields);
-    import('./appsScript').then(({ AppsScriptService }) => {
-      AppsScriptService.syncAllFieldsToAppsScript(cleanFields).catch((err) => {
-        console.warn('Apps Script sync fields notice:', err);
+    if (syncToCloud) {
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.syncAllFieldsToAppsScript(cleanFields).catch((err) => {
+          console.warn('Apps Script sync fields notice:', err);
+        });
       });
-    });
+    }
   },
   async saveSingleFormField(field: FormField): Promise<void> {
     const allFields = this.getFormFields();
@@ -537,12 +581,27 @@ export const StorageService = {
   getSubmissions(): SubmissionRequest[] {
     const rawList = getStored<SubmissionRequest[]>(KEYS.SUBMISSIONS, INITIAL_SUBMISSIONS);
     const realList = rawList.filter((s) => !isDummySubmission(s));
-    if (realList.length !== rawList.length) {
+    
+    // Ensure unique IDs across all submissions
+    const seenIds = new Set<string>();
+    let hasDupes = realList.length !== rawList.length;
+    const deduplicatedList = realList.map((item, idx) => {
+      if (!item.id || seenIds.has(item.id)) {
+        hasDupes = true;
+        const uniqueId = `sub-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+        seenIds.add(uniqueId);
+        return { ...item, id: uniqueId };
+      }
+      seenIds.add(item.id);
+      return item;
+    });
+
+    if (hasDupes) {
       setTimeout(() => {
-        setStored(KEYS.SUBMISSIONS, realList, false);
+        setStored(KEYS.SUBMISSIONS, deduplicatedList, false);
       }, 0);
     }
-    return realList;
+    return deduplicatedList;
   },
   getSampleSubmissions(): SubmissionRequest[] {
     return DEMO_SAMPLE_SUBMISSIONS;
@@ -662,7 +721,7 @@ export const StorageService = {
     const requestNumber = data.customRequestNumber || this.calculateNextRequestNumber(submissions);
 
     const newRequest: SubmissionRequest = {
-      id: 'sub-' + Date.now(),
+      id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
       requestNumber,
       letterTypeId: data.letterTypeId,
       letterTypeName: data.letterTypeName,
@@ -848,12 +907,27 @@ export const StorageService = {
   getComplaints(): ComplaintTicket[] {
     const rawList = getStored<ComplaintTicket[]>(KEYS.COMPLAINTS, INITIAL_COMPLAINTS);
     const filtered = rawList.filter((c) => !isDummyComplaint(c));
-    if (filtered.length !== rawList.length) {
+    
+    // Ensure unique IDs across all complaints
+    const seenIds = new Set<string>();
+    let hasDupes = filtered.length !== rawList.length;
+    const deduplicated = filtered.map((c, idx) => {
+      if (!c.id || seenIds.has(c.id)) {
+        hasDupes = true;
+        const uniqueId = `tkt-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+        seenIds.add(uniqueId);
+        return { ...c, id: uniqueId };
+      }
+      seenIds.add(c.id);
+      return c;
+    });
+
+    if (hasDupes) {
       setTimeout(() => {
-        setStored(KEYS.COMPLAINTS, filtered, false);
+        setStored(KEYS.COMPLAINTS, deduplicated, false);
       }, 0);
     }
-    return filtered;
+    return deduplicated;
   },
 
   saveComplaints(complaints: ComplaintTicket[]): void {

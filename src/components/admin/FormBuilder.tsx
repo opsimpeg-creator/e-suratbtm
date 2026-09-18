@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LetterType, FormField, FieldType } from '../../types';
 import { StorageService } from '../../services/storage';
 import { AppsScriptService } from '../../services/appsScript';
@@ -56,6 +56,18 @@ export const FormBuilder: React.FC<FormBuilderProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   const activeLetterType = letterTypes.find((t) => t.id === currentTypeId);
+
+  // Otomatis tarik kolom terbaru dari sheet FieldSurat di Spreadsheet saat halaman Form Builder dibuka
+  useEffect(() => {
+    const currentSettings = StorageService.getSettings();
+    if (currentSettings.spreadsheetId) {
+      AppsScriptService.fetchFieldsFromSpreadsheet(true).then((res) => {
+        if (res.success) {
+          onRefresh();
+        }
+      }).catch(() => {});
+    }
+  }, []);
 
   const resetFieldForm = () => {
     setEditingFieldId(null);

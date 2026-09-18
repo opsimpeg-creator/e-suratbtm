@@ -348,6 +348,20 @@ function handleRoute(action, params) {
     return { success: true };
   }
 
+  if (action === 'deleteUser' || action === 'deletePengguna') {
+    const sheet = ss.getSheetByName('Pengguna');
+    if (!sheet) return { success: false, message: "Sheet Pengguna tidak ditemukan" };
+    const data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(params.id) || String(data[i][1]) === String(params.username)) {
+        sheet.deleteRow(i + 1);
+        logActivity(ss, params.actor || 'Admin', 'DELETE_USER', 'Hapus pengguna: ' + (params.username || params.id));
+        return { success: true, message: "Pengguna berhasil dihapus" };
+      }
+    }
+    return { success: false, message: "Pengguna tidak ditemukan" };
+  }
+
   if (action === 'saveAllJenisSurat') {
     const sheet = ss.getSheetByName('JenisSurat');
     const expectedJsHeaders = ['ID', 'Kode', 'NamaSurat', 'Deskripsi', 'LamaProsesHari', 'StatusAktif', 'Urutan', 'Warna', 'Ikon'];
@@ -386,49 +400,79 @@ function handleRoute(action, params) {
 
     // Pastikan header baris 1 di sheet FieldSurat selalu lengkap 10 kolom
     var expectedFsHeaders = ['ID', 'JenisSuratID', 'Label', 'Name', 'Type', 'Required', 'Urutan', 'Placeholder', 'PesanBantuan', 'OpsiPilihan'];
-    var currentHeaderRange = sheet.getRange(1, 1, 1, 10);
-    var currentHeaders = currentHeaderRange.getValues()[0];
-    var needHeaderFix = false;
-    for (var h = 0; h < expectedFsHeaders.length; h++) {
-      if (!currentHeaders[h] || String(currentHeaders[h]).trim() === '') {
-        needHeaderFix = true;
-        break;
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(expectedFsHeaders);
+      sheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+    } else {
+      var curHeaders = sheet.getRange(1, 1, 1, 10).getValues()[0];
+      var needHeaderFix = false;
+      for (var h = 0; h < expectedFsHeaders.length; h++) {
+        if (!curHeaders[h] || String(curHeaders[h]).trim() === '') {
+          needHeaderFix = true;
+          break;
+        }
       }
-    }
-    if (needHeaderFix) {
-      currentHeaderRange.setValues([expectedFsHeaders]);
-      currentHeaderRange.setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+      if (needHeaderFix) {
+        sheet.getRange(1, 1, 1, expectedFsHeaders.length).setValues([expectedFsHeaders]);
+        sheet.getRange(1, 1, 1, expectedFsHeaders.length).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+      }
     }
 
     const data = sheet.getDataRange().getValues();
-
-    // Hapus baris lama milik jenis surat ini secara aman dari bawah ke atas
-    for (var i = data.length - 1; i >= 1; i--) {
-      var rowTypeId = String(data[i][1]).trim();
-      if ((letterTypeId && rowTypeId === letterTypeId) || (letterTypeCode && rowTypeId === letterTypeCode)) {
-        sheet.deleteRow(i + 1);
+    // Petakan baris yang ada untuk jenis surat ini berdasarkan ID dan Nama Kolom
+    var rowMapById = {};
+    var rowMapByName = {};
+    for (var i = 1; i < data.length; i++) {
+      var rId = String(data[i][0] || '').trim();
+      var rTypeId = String(data[i][1] || '').trim();
+      var rName = String(data[i][3] || '').trim();
+      if ((letterTypeId && rTypeId === letterTypeId) || (letterTypeCode && rTypeId === letterTypeCode)) {
+        if (rId) rowMapById[rId] = i + 1;
+        if (rName) rowMapByName[rName] = i + 1;
       }
     }
 
-    // Tulis baris kolom terbaru (tanpa dobel)
+    // Upsert non-destruktif: perbarui baris yang ada atau tambahkan baris baru tanpa menghapus data manual
+    var updatedCount = 0;
+    var insertedCount = 0;
     for (var f = 0; f < items.length; f++) {
       var itm = items[f];
+      var itmId = String(itm.id || '').trim();
+      var itmName = String(itm.name || '').trim();
       var isReqStr = (itm.required === false || String(itm.required).toUpperCase() === 'FALSE' || String(itm.required).toUpperCase() === 'TIDAK' || itm.required === 0 || String(itm.required) === '0') ? 'FALSE' : 'TRUE';
-      sheet.appendRow([
-        itm.id || ('f-' + Date.now() + '-' + (f + 1)),
+      var itmOpts = Array.isArray(itm.options) ? itm.options.join(', ') : (itm.options || '');
+
+      var targetRow = 0;
+      if (itmId && rowMapById[itmId]) {
+        targetRow = rowMapById[itmId];
+      } else if (itmName && rowMapByName[itmName]) {
+        targetRow = rowMapByName[itmName];
+      }
+
+      var rowValues = [
+        itmId || ('f-' + Date.now() + '-' + (f + 1)),
         letterTypeId || letterTypeCode || '',
         itm.label || '',
-        itm.name || '',
+        itmName,
         itm.type || 'text',
         isReqStr,
         itm.order || (f + 1),
         itm.placeholder || '',
         itm.helpText || '',
-        Array.isArray(itm.options) ? itm.options.join(', ') : (itm.options || '')
-      ]);
+        itmOpts
+      ];
+
+      if (targetRow > 0) {
+        sheet.getRange(targetRow, 1, 1, 10).setValues([rowValues]);
+        updatedCount++;
+      } else {
+        sheet.appendRow(rowValues);
+        insertedCount++;
+      }
     }
-    logActivity(ss, 'Admin', 'SAVE_LETTER_FIELDS', 'Perbarui ' + items.length + ' kolom untuk jenis surat ' + (letterTypeCode || letterTypeId));
-    return { success: true, count: items.length };
+
+    logActivity(ss, 'Admin', 'SAVE_LETTER_FIELDS', 'Upsert kolom surat ' + (letterTypeCode || letterTypeId) + ': ' + updatedCount + ' diperbarui, ' + insertedCount + ' ditambahkan');
+    return { success: true, count: items.length, updated: updatedCount, inserted: insertedCount };
   }
 
   if (action === 'saveFieldSurat') {
@@ -484,28 +528,88 @@ function handleRoute(action, params) {
     const sheet = ss.getSheetByName('FieldSurat');
     if (!sheet) return { success: false, message: "Sheet FieldSurat tidak ditemukan" };
     const items = params.items || params.fields || [];
-    const lastRow = sheet.getLastRow();
-    if (lastRow > 1) {
-      sheet.getRange(2, 1, lastRow - 1, 10).clearContent();
+
+    // Pastikan header baris 1 di sheet FieldSurat selalu lengkap
+    var expectedFsHeaders = ['ID', 'JenisSuratID', 'Label', 'Name', 'Type', 'Required', 'Urutan', 'Placeholder', 'PesanBantuan', 'OpsiPilihan'];
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(expectedFsHeaders);
+      sheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+    } else {
+      var curHeaders = sheet.getRange(1, 1, 1, 10).getValues()[0];
+      var needHeaderFix = false;
+      for (var h = 0; h < expectedFsHeaders.length; h++) {
+        if (!curHeaders[h] || String(curHeaders[h]).trim() === '') {
+          needHeaderFix = true;
+          break;
+        }
+      }
+      if (needHeaderFix) {
+        sheet.getRange(1, 1, 1, expectedFsHeaders.length).setValues([expectedFsHeaders]);
+        sheet.getRange(1, 1, 1, expectedFsHeaders.length).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+      }
     }
+
+    const data = sheet.getDataRange().getValues();
+    // Buat index baris yang sudah ada berdasarkan ID dan compound key (JenisSuratID + '::' + Name)
+    var rowMapById = {};
+    var rowMapByKey = {};
+    for (var r = 1; r < data.length; r++) {
+      var rId = String(data[r][0] || '').trim();
+      var rTypeId = String(data[r][1] || '').trim();
+      var rName = String(data[r][3] || '').trim();
+      if (rId) {
+        rowMapById[rId] = r + 1;
+      }
+      if (rTypeId && rName) {
+        rowMapByKey[rTypeId + '::' + rName] = r + 1;
+      }
+    }
+
+    // PENTING: Lakukan Upsert non-destruktif! JANGAN PERNAH gunakan clearContent() agar data paste manual tidak hilang!
+    var updatedCount = 0;
+    var insertedCount = 0;
     for (var f = 0; f < items.length; f++) {
       var itm = items[f];
+      var itmId = String(itm.id || '').trim();
+      var itmTypeId = String(itm.letterTypeId || itm.JenisSuratID || '').trim();
+      var itmName = String(itm.name || itm.Name || '').trim();
       var itmReqStr = (itm.required === false || String(itm.required).toUpperCase() === 'FALSE' || String(itm.required).toUpperCase() === 'TIDAK' || itm.required === 0 || String(itm.required) === '0') ? 'FALSE' : 'TRUE';
-      sheet.appendRow([
-        itm.id || ('f-' + (f + 1)),
-        itm.letterTypeId || '',
-        itm.label || '',
-        itm.name || '',
-        itm.type || 'text',
+      var itmOpts = Array.isArray(itm.options) ? itm.options.join(', ') : (itm.options || itm.OpsiPilihan || '');
+
+      var targetRow = 0;
+      if (itmId && rowMapById[itmId]) {
+        targetRow = rowMapById[itmId];
+      } else if (itmTypeId && itmName && rowMapByKey[itmTypeId + '::' + itmName]) {
+        targetRow = rowMapByKey[itmTypeId + '::' + itmName];
+      }
+
+      var rowValues = [
+        itmId || ('f-' + Date.now() + '-' + (f + 1)),
+        itmTypeId,
+        itm.label || itm.Label || '',
+        itmName,
+        itm.type || itm.Type || 'text',
         itmReqStr,
-        itm.order || (f + 1),
-        itm.placeholder || '',
-        itm.helpText || '',
-        Array.isArray(itm.options) ? itm.options.join(', ') : (itm.options || '')
-      ]);
+        itm.order || itm.Urutan || (f + 1),
+        itm.placeholder || itm.Placeholder || '',
+        itm.helpText || itm.PesanBantuan || '',
+        itmOpts
+      ];
+
+      if (targetRow > 0) {
+        sheet.getRange(targetRow, 1, 1, 10).setValues([rowValues]);
+        updatedCount++;
+      } else {
+        sheet.appendRow(rowValues);
+        var newRowNum = sheet.getLastRow();
+        if (itmId) rowMapById[itmId] = newRowNum;
+        if (itmTypeId && itmName) rowMapByKey[itmTypeId + '::' + itmName] = newRowNum;
+        insertedCount++;
+      }
     }
-    logActivity(ss, 'Admin', 'SYNC_ALL_FIELD_SURAT', 'Sinkronisasi ' + items.length + ' kolom formulir');
-    return { success: true, count: items.length };
+
+    logActivity(ss, 'Admin', 'SYNC_ALL_FIELD_SURAT', 'Upsert FieldSurat: ' + updatedCount + ' diperbarui, ' + insertedCount + ' ditambahkan');
+    return { success: true, count: items.length, updated: updatedCount, inserted: insertedCount };
   }
 
   if (action === 'deleteFieldSurat') {
@@ -602,7 +706,7 @@ function handleRoute(action, params) {
         ]]);
         updated = true;
       } else {
-        var newId = params.id || ('sub-' + Date.now());
+        var newId = params.id || ('sub-' + Date.now() + '-' + Math.floor(1000 + Math.random() * 9000));
         const row = [
           newId,
           assignedRequestNumber,
@@ -1240,10 +1344,47 @@ function logActivity(ss, user, action, details) {
     let rawTypesList: any[] = [];
     let source = '';
 
-    // 1. Try Web App API
-    if (url) {
+    // 1. Prioritize direct Google GViz API on sheet=JenisSurat for instant (< 1s) response
+    if (settings.spreadsheetId) {
       try {
-        const resp = await fetch(`${url}?action=getAllData`);
+        const gvizUrl = `https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}/gviz/tq?tqx=out:json&sheet=JenisSurat&t=${Date.now()}`;
+        const gvizRes = await fetch(gvizUrl);
+        if (gvizRes.ok) {
+          const text = await gvizRes.text();
+          const jsonText = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+          const gvizData = JSON.parse(jsonText);
+          if (gvizData?.table?.rows && gvizData.table.rows.length > 0) {
+            const getVal = (cell: any) =>
+              cell?.v !== undefined && cell?.v !== null ? cell.v : (cell?.f !== undefined && cell?.f !== null ? cell.f : '');
+            rawTypesList = gvizData.table.rows.map((r: any) => {
+              const c = r.c || [];
+              return {
+                ID: getVal(c[0]),
+                Kode: getVal(c[1]),
+                NamaSurat: getVal(c[2]),
+                Deskripsi: getVal(c[3]),
+                LamaProsesHari: getVal(c[4]),
+                StatusAktif: getVal(c[5]),
+                Urutan: getVal(c[6]),
+                Warna: getVal(c[7]),
+                Ikon: getVal(c[8]),
+              };
+            });
+            if (rawTypesList.length > 0) source = 'Google Spreadsheet (GViz)';
+          }
+        }
+      } catch (e) {
+        console.warn('GViz JenisSurat fetch notice:', e);
+      }
+    }
+
+    // 2. Fallback via Web App API with strict 4s timeout if GViz didn't return rows
+    if (rawTypesList.length === 0 && url) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const resp = await fetch(`${url}?action=getAllData&t=${Date.now()}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
         if (resp.ok) {
           const json = await resp.json();
           if (json.success && Array.isArray(json.jenisSurat) && json.jenisSurat.length > 0) {
@@ -1252,50 +1393,25 @@ function logActivity(ss, user, action, details) {
           }
         }
       } catch (e) {
-        // continue to GViz fallback
-      }
-    }
-
-    // 2. Fallback via GViz API directly on sheet=JenisSurat
-    if (rawTypesList.length === 0 && settings.spreadsheetId) {
-      try {
-        const gvizUrl = `https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}/gviz/tq?tqx=out:json&sheet=JenisSurat`;
-        const gvizRes = await fetch(gvizUrl);
-        if (gvizRes.ok) {
-          const text = await gvizRes.text();
-          const jsonText = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
-          const gvizData = JSON.parse(jsonText);
-          if (gvizData?.table?.rows) {
-            rawTypesList = gvizData.table.rows.map((r: any) => {
-              const c = r.c || [];
-              return {
-                ID: c[0]?.v,
-                Kode: c[1]?.v,
-                NamaSurat: c[2]?.v,
-                Deskripsi: c[3]?.v,
-                LamaProsesHari: c[4]?.v,
-                StatusAktif: c[5]?.v,
-                Urutan: c[6]?.v,
-                Warna: c[7]?.v,
-                Ikon: c[8]?.v,
-              };
-            });
-            if (rawTypesList.length > 0) source = 'Google Spreadsheet (GViz)';
-          }
-        }
-      } catch (e) {
-        // ignore
+        // continue
       }
     }
 
     if (rawTypesList.length > 0) {
       const currentLetterTypes = StorageService.getLetterTypes();
       const parsedTypes: any[] = [];
+      const seenKeys = new Set<string>();
+
       for (let idx = 0; idx < rawTypesList.length; idx++) {
         const item = rawTypesList[idx];
         const name = String(item.NamaSurat || item.name || item.Nama || '').trim();
         const code = String(item.Kode || item.code || '').trim();
         if (!name && !code) continue;
+
+        const resolvedCode = code || `SRT-${idx + 1}`;
+        const dedupeKey = (resolvedCode || name).toUpperCase();
+        if (seenKeys.has(dedupeKey)) continue;
+        seenKeys.add(dedupeKey);
 
         const rawStatus = String(item.StatusAktif || item.status || item.active || item.isActive || 'Ya').toLowerCase();
         const isActive = rawStatus === 'ya' || rawStatus === 'true' || rawStatus === '1' || rawStatus === 'aktif';
@@ -1311,6 +1427,7 @@ function logActivity(ss, user, action, details) {
           SPS: 'bg-rose-600',
           SKL: 'bg-emerald-600',
           SDS: 'bg-amber-600',
+          SMPS: 'bg-purple-600',
         };
 
         const iconMap: Record<string, string> = {
@@ -1324,9 +1441,9 @@ function logActivity(ss, user, action, details) {
           SPS: 'FileSpreadsheet',
           SKL: 'GraduationCap',
           SDS: 'FileQuestion',
+          SMPS: 'FileText',
         };
 
-        const resolvedCode = code || `SRT-${idx + 1}`;
         const rawId = String(item.ID || item.id || `lt-${idx + 1}`);
 
         // Find if this type already exists in local storage to preserve user-customized color/icon
@@ -1368,7 +1485,8 @@ function logActivity(ss, user, action, details) {
 
       if (parsedTypes.length > 0) {
         parsedTypes.sort((a, b) => (a.order || 0) - (b.order || 0));
-        StorageService.saveLetterTypes(parsedTypes);
+        // Save to local storage without pushing back to Apps Script (protect spreadsheet)
+        StorageService.saveLetterTypes(parsedTypes, false);
         return {
           success: true,
           letterTypes: parsedTypes,
@@ -1473,10 +1591,48 @@ function logActivity(ss, user, action, details) {
     let rawFieldsList: any[] = [];
     let source = '';
 
-    // 1. Try Web App API
-    if (url) {
+    // 1. Prioritize direct Google GViz API on sheet=FieldSurat for instant response
+    if (settings.spreadsheetId) {
       try {
-        const resp = await fetch(`${url}?action=getAllData`);
+        const gvizUrl = `https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}/gviz/tq?tqx=out:json&sheet=FieldSurat&t=${Date.now()}`;
+        const gvizRes = await fetch(gvizUrl);
+        if (gvizRes.ok) {
+          const text = await gvizRes.text();
+          const jsonText = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+          const gvizData = JSON.parse(jsonText);
+          if (gvizData?.table?.rows && gvizData.table.rows.length > 0) {
+            const getVal = (cell: any) =>
+              cell?.v !== undefined && cell?.v !== null ? cell.v : (cell?.f !== undefined && cell?.f !== null ? cell.f : '');
+            rawFieldsList = gvizData.table.rows.map((r: any, idx: number) => {
+              const c = r.c || [];
+              return {
+                ID: getVal(c[0]),
+                JenisSuratID: getVal(c[1]),
+                Label: getVal(c[2]),
+                Name: getVal(c[3]),
+                Type: getVal(c[4]),
+                Required: getVal(c[5]),
+                Urutan: getVal(c[6]),
+                Placeholder: getVal(c[7]),
+                PesanBantuan: getVal(c[8]),
+                OpsiPilihan: getVal(c[9]),
+              };
+            });
+            if (rawFieldsList.length > 0) source = 'Google Spreadsheet (GViz)';
+          }
+        }
+      } catch (e) {
+        console.warn('GViz FieldSurat fetch notice:', e);
+      }
+    }
+
+    // 2. Fallback via Web App API with strict 4s timeout if GViz didn't return rows
+    if (rawFieldsList.length === 0 && url) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const resp = await fetch(`${url}?action=getAllData&t=${Date.now()}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
         if (resp.ok) {
           const json = await resp.json();
           if (json.success && Array.isArray(json.fieldSurat) && json.fieldSurat.length > 0) {
@@ -1485,46 +1641,15 @@ function logActivity(ss, user, action, details) {
           }
         }
       } catch (e) {
-        // continue to GViz fallback
-      }
-    }
-
-    // 2. Fallback via GViz API directly on sheet=FieldSurat
-    if (rawFieldsList.length === 0 && settings.spreadsheetId) {
-      try {
-        const gvizUrl = `https://docs.google.com/spreadsheets/d/${settings.spreadsheetId}/gviz/tq?tqx=out:json&sheet=FieldSurat`;
-        const gvizRes = await fetch(gvizUrl);
-        if (gvizRes.ok) {
-          const text = await gvizRes.text();
-          const jsonText = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
-          const gvizData = JSON.parse(jsonText);
-          if (gvizData?.table?.rows) {
-            rawFieldsList = gvizData.table.rows.map((r: any, idx: number) => {
-              const c = r.c || [];
-              return {
-                ID: c[0]?.v,
-                JenisSuratID: c[1]?.v,
-                Label: c[2]?.v,
-                Name: c[3]?.v,
-                Type: c[4]?.v,
-                Required: c[5]?.v,
-                Urutan: c[6]?.v,
-                Placeholder: c[7]?.v,
-                PesanBantuan: c[8]?.v,
-                OpsiPilihan: c[9]?.v,
-              };
-            });
-            if (rawFieldsList.length > 0) source = 'Google Spreadsheet (GViz)';
-          }
-        }
-      } catch (e) {
-        // ignore
+        // continue
       }
     }
 
     if (rawFieldsList.length > 0) {
       const currentFields = StorageService.getFormFields();
       const parsedFields: any[] = [];
+      const seenFieldIds = new Set<string>();
+
       for (let idx = 0; idx < rawFieldsList.length; idx++) {
         const item = rawFieldsList[idx];
         const rawId = String(item.ID || item.id || '').trim();
@@ -1575,8 +1700,15 @@ function logActivity(ss, user, action, details) {
           }
         }
 
+        // Pastikan ID unik agar React rendering & database aman dari duplikasi kunci
+        let assignedId = rawId;
+        if (!assignedId || seenFieldIds.has(assignedId)) {
+          assignedId = assignedId ? `${assignedId}-dup-${idx + 1}` : `f-${Date.now()}-${idx + 1}-${Math.random().toString(36).substring(2, 6)}`;
+        }
+        seenFieldIds.add(assignedId);
+
         parsedFields.push({
-          id: rawId || `f-${idx + 1}`,
+          id: assignedId,
           letterTypeId,
           label,
           name: fieldName,
@@ -1590,11 +1722,23 @@ function logActivity(ss, user, action, details) {
       }
 
       if (parsedFields.length > 0) {
-        parsedFields.sort((a, b) => (a.order || 0) - (b.order || 0));
-        await StorageService.saveFormFields(parsedFields);
+        // Gabungkan dengan kolom lokal agar kolom yang belum sempat tersinkron tidak hilang
+        const combinedFields = [...parsedFields];
+        for (const cur of currentFields) {
+          const alreadyInParsed = parsedFields.some(
+            (p) => p.id === cur.id || (p.letterTypeId === cur.letterTypeId && p.name === cur.name)
+          );
+          if (!alreadyInParsed) {
+            combinedFields.push(cur);
+          }
+        }
+
+        combinedFields.sort((a, b) => (a.order || 0) - (b.order || 0));
+        // Simpan ke storage lokal dengan syncToCloud=false untuk memutus siklus write-back
+        await StorageService.saveFormFields(combinedFields, false);
         return {
           success: true,
-          fields: parsedFields,
+          fields: combinedFields,
           message: `Berhasil memuat ${parsedFields.length} kolom formulir dari sheet FieldSurat (${source})!`,
         };
       }
@@ -1662,6 +1806,34 @@ function logActivity(ss, user, action, details) {
       return true;
     } catch (err) {
       console.warn('Sync all users to Google Apps Script error:', err);
+      return false;
+    }
+  },
+
+  deleteUserFromAppsScript: async function (id: string, username?: string): Promise<boolean> {
+    const settings = StorageService.getSettings();
+    const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
+    if (!url) return false;
+
+    try {
+      const payload = {
+        action: 'deleteUser',
+        id,
+        username: username || '',
+        actor: 'Super Admin',
+      };
+
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+        mode: 'no-cors',
+      });
+      return true;
+    } catch (err) {
+      console.warn('Delete user from Google Apps Script error:', err);
       return false;
     }
   },
@@ -1755,7 +1927,9 @@ function logActivity(ss, user, action, details) {
       const currentSubmissions = StorageService.getSubmissions();
       const parsedSubmissions: any[] = [];
 
-      for (const item of permohonanList) {
+      const seenSubIds = new Set<string>();
+      for (let i = 0; i < permohonanList.length; i++) {
+        const item = permohonanList[i];
         let formData = {};
         try {
           formData = typeof item.FormData === 'string' ? JSON.parse(item.FormData) : (item.FormData || {});
@@ -1763,7 +1937,13 @@ function logActivity(ss, user, action, details) {
           formData = {};
         }
 
-        const itemId = String(item.ID || item.id || ('sub-' + Date.now()));
+        const rawItemId = item.ID || item.id;
+        let itemId = rawItemId ? String(rawItemId).trim() : '';
+        if (!itemId || seenSubIds.has(itemId)) {
+          itemId = `sub-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`;
+        }
+        seenSubIds.add(itemId);
+
         const reqNum = String(item.NoPermohonan || item.requestNumber || 'SRT-000');
         const existingSub = currentSubmissions.find(
           (s) => (s.requestNumber && s.requestNumber.trim() === reqNum.trim()) || s.id === itemId
@@ -1902,14 +2082,23 @@ function logActivity(ss, user, action, details) {
       }
 
       const parsedComplaints: any[] = [];
-      for (const item of rawComplaintsList) {
+      const seenComplaintIds = new Set<string>();
+      for (let j = 0; j < rawComplaintsList.length; j++) {
+        const item = rawComplaintsList[j];
         const ticketNum = String(item.NoTiket || item.ticketNumber || '');
         const sender = String(item.NamaPengirim || item.senderName || '');
         const msg = String(item.IsiPesan || item.message || '');
         if (!ticketNum && !sender && !msg) continue;
 
+        const rawCId = item.ID || item.id;
+        let cId = rawCId ? String(rawCId).trim() : '';
+        if (!cId || seenComplaintIds.has(cId)) {
+          cId = `tkt-${Date.now()}-${j}-${Math.random().toString(36).substring(2, 7)}`;
+        }
+        seenComplaintIds.add(cId);
+
         parsedComplaints.push({
-          id: String(item.ID || item.id || ('tkt-' + Date.now())),
+          id: cId,
           ticketNumber: ticketNum || 'TKT-000000-0000',
           senderName: sender || 'Pengirim',
           senderContact: String(item.Kontak || item.senderContact || ''),
