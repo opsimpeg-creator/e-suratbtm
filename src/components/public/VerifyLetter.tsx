@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SubmissionRequest, SchoolSettings } from '../../types';
 import { StorageService } from '../../services/storage';
+import { AppsScriptService } from '../../services/appsScript';
 import { PdfGenerator } from '../../services/pdfGenerator';
 import {
   ShieldCheck,
@@ -21,7 +22,8 @@ import {
   Calendar,
   AlertCircle,
   Users,
-  GraduationCap
+  GraduationCap,
+  Loader2
 } from 'lucide-react';
 
 interface VerifyLetterProps {
@@ -33,6 +35,7 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
   const [queryCode, setQueryCode] = useState(initialCode || '');
   const [verifiedRequest, setVerifiedRequest] = useState<SubmissionRequest | null>(null);
   const [searched, setSearched] = useState(false);
+  const [isVerifyingCloud, setIsVerifyingCloud] = useState(false);
   const [previewModalFile, setPreviewModalFile] = useState<{ fileName: string; fileUrl: string; fileSize?: string } | null>(null);
 
   useEffect(() => {
@@ -54,9 +57,23 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
       setQueryCode(codeToVerify);
       handleVerify(codeToVerify);
     }
+
+    const handleStorageUpdate = () => {
+      const activeCode = (codeToVerify || queryCode).trim();
+      if (activeCode) {
+        const found = StorageService.getSubmissionByQr(activeCode) || StorageService.getSubmissionByNumber(activeCode);
+        if (found) {
+          setVerifiedRequest(found);
+        }
+      }
+    };
+    window.addEventListener('tu_storage_updated', handleStorageUpdate);
+    return () => {
+      window.removeEventListener('tu_storage_updated', handleStorageUpdate);
+    };
   }, [initialCode]);
 
-  const handleVerify = (code: string) => {
+  const handleVerify = async (code: string) => {
     let c = (code || '').trim();
     if (!c) return;
 
@@ -77,8 +94,25 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
     }
 
     setSearched(true);
-    const found = StorageService.getSubmissionByQr(c) || StorageService.getSubmissionByNumber(c);
+    let found = StorageService.getSubmissionByQr(c) || StorageService.getSubmissionByNumber(c);
     setVerifiedRequest(found || null);
+
+    // Jika belum ditemukan di browser lokal, atau berkas surat resmi belum sinkron di lokal,
+    // langsung tarik sinkronisasi dari Google Apps Script / Spreadsheet
+    if (!found || (!found.issuedDocumentUrl && !found.formData?._officialFileUrl)) {
+      setIsVerifyingCloud(true);
+      try {
+        await AppsScriptService.fetchDataFromAppsScript(true);
+        const refound = StorageService.getSubmissionByQr(c) || StorageService.getSubmissionByNumber(c);
+        if (refound) {
+          setVerifiedRequest(refound);
+        }
+      } catch (err) {
+        console.warn('Verify letter cloud fetch notice:', err);
+      } finally {
+        setIsVerifyingCloud(false);
+      }
+    }
   };
 
   const onVerifySubmit = (e: React.FormEvent) => {
@@ -186,12 +220,24 @@ export const VerifyLetter: React.FC<VerifyLetterProps> = ({ settings, initialCod
 
           <button
             type="submit"
-            className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-8 py-3.5 rounded-2xl text-sm transition shadow-md flex items-center justify-center gap-2"
+            disabled={isVerifyingCloud}
+            className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-75 text-white font-bold px-8 py-3.5 rounded-2xl text-sm transition shadow-md flex items-center justify-center gap-2"
           >
-            <ShieldCheck className="w-5 h-5" />
-            <span>Verifikasi Keabsahan</span>
+            {isVerifyingCloud ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <ShieldCheck className="w-5 h-5" />
+            )}
+            <span>{isVerifyingCloud ? 'Mengecek Database...' : 'Verifikasi Keabsahan'}</span>
           </button>
         </form>
+
+        {isVerifyingCloud && (
+          <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 p-2.5 rounded-xl animate-pulse">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+            <span>Sedang menyinkronkan data keabsahan dokumen dari Google Spreadsheet & Cloud Drive...</span>
+          </div>
+        )}
 
         <div className="text-xs text-slate-500 pt-1 space-y-1">
           <p className="flex items-center gap-1.5 font-medium text-slate-600">

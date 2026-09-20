@@ -719,7 +719,9 @@ function handleRoute(action, params) {
       }
 
       if (existingRowIndex > 0) {
-        sheet.getRange(existingRowIndex, 1, 1, 10).setValues([[
+        var existingFile = data[existingRowIndex - 1].length > 10 ? data[existingRowIndex - 1][10] : '';
+        var existingTgl = data[existingRowIndex - 1].length > 11 ? data[existingRowIndex - 1][11] : '';
+        sheet.getRange(existingRowIndex, 1, 1, 12).setValues([[
           params.id || data[existingRowIndex - 1][0],
           assignedRequestNumber,
           params.applicantName || data[existingRowIndex - 1][2],
@@ -729,7 +731,9 @@ function handleRoute(action, params) {
           params.status || data[existingRowIndex - 1][6] || 'Menunggu',
           typeof formData === 'object' ? JSON.stringify(formData) : String(formData),
           data[existingRowIndex - 1][8] || new Date().toISOString(),
-          params.officialLetterNumber || data[existingRowIndex - 1][9] || ''
+          params.officialLetterNumber || data[existingRowIndex - 1][9] || '',
+          params.issuedDocumentUrl || existingFile || '',
+          params.officialLetterDate || existingTgl || ''
         ]]);
         updated = true;
       } else {
@@ -744,7 +748,9 @@ function handleRoute(action, params) {
           params.status || 'Menunggu',
           typeof formData === 'object' ? JSON.stringify(formData) : String(formData),
           new Date().toISOString(),
-          params.officialLetterNumber || ''
+          params.officialLetterNumber || '',
+          params.issuedDocumentUrl || '',
+          params.officialLetterDate || ''
         ];
         sheet.appendRow(row);
       }
@@ -798,11 +804,59 @@ function handleRoute(action, params) {
   if (action === 'updateStatus') {
     const sheet = ss.getSheetByName('Permohonan');
     if (!sheet) return { success: false, message: "Sheet Permohonan tidak ditemukan" };
+
+    // Pastikan kolom header Permohonan terdeteksi dengan tepat
+    var curPermohonanH = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 10)).getValues()[0];
+    var colStatus = 7;
+    var colNoResmi = 10;
+    var colFileResmi = -1;
+    var colTglTerbit = -1;
+    for (var hp = 0; hp < curPermohonanH.length; hp++) {
+      var hName = String(curPermohonanH[hp]).trim().toLowerCase();
+      if (hName === 'status') colStatus = hp + 1;
+      if (hName === 'nosuratresmi' || hName === 'nomorsuratresmi') colNoResmi = hp + 1;
+      if (hName === 'filesuratresmi' || hName === 'fileurl' || hName === 'dokumenresmi') colFileResmi = hp + 1;
+      if (hName === 'tanggalterbitresmi' || hName === 'tanggalterbit' || hName === 'tgletterbit') colTglTerbit = hp + 1;
+    }
+    if (colFileResmi === -1) {
+      colFileResmi = curPermohonanH.length + 1;
+      sheet.getRange(1, colFileResmi).setValue('FileSuratResmi').setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+    }
+    if (colTglTerbit === -1) {
+      colTglTerbit = colFileResmi + 1;
+      sheet.getRange(1, colTglTerbit).setValue('TanggalTerbitResmi').setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+    }
+
+    // Auto Upload Surat Resmi ke Google Drive jika ada file data base64
+    var finalFileUrl = params.issuedDocumentUrl || '';
+    var rawDoc = params.fileData || params.issuedDocumentData || params.issuedDocumentUrl || '';
+    var rawDocName = params.fileName || params.officialFileName || ('Surat_Resmi_' + String(params.officialLetterNumber || params.requestNumber).replace(/[/\\?%*:|"<>]/g, '_') + '.pdf');
+
+    if (rawDoc && (rawDoc.indexOf('data:') === 0 || rawDoc.indexOf('JVBER') === 0 || (rawDoc.length > 500 && rawDoc.indexOf('http') !== 0))) {
+      try {
+        var folderName = 'Surat Resmi E-Surat TU';
+        var folders = DriveApp.getFoldersByName(folderName);
+        var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+
+        var base64Str = rawDoc.indexOf(',') > -1 ? rawDoc.split(',')[1] : rawDoc;
+        var bytes = Utilities.base64Decode(base64Str);
+        var blob = Utilities.newBlob(bytes, 'application/pdf', rawDocName);
+        var file = folder.createFile(blob);
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+        finalFileUrl = file.getUrl();
+      } catch (errDrive) {
+        // Fallback jika Google Drive gagal
+      }
+    }
+
     const data = sheet.getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
-      if (data[i][1] === params.requestNumber || data[i][0] === params.id) {
-        sheet.getRange(i + 1, 7).setValue(params.status); // Col Status
-        if (params.officialLetterNumber) sheet.getRange(i + 1, 10).setValue(params.officialLetterNumber);
+      if (String(data[i][1]).trim() === String(params.requestNumber).trim() || (params.id && String(data[i][0]).trim() === String(params.id).trim())) {
+        sheet.getRange(i + 1, colStatus).setValue(params.status); // Col Status
+        if (params.officialLetterNumber) sheet.getRange(i + 1, colNoResmi).setValue(params.officialLetterNumber);
+        if (finalFileUrl) sheet.getRange(i + 1, colFileResmi).setValue(finalFileUrl);
+        if (params.officialLetterDate) sheet.getRange(i + 1, colTglTerbit).setValue(params.officialLetterDate);
 
         // Jika status Selesai, simpan/arsipkan ke Sheet Arsip
         if (params.status === 'Selesai') {
@@ -810,12 +864,12 @@ function handleRoute(action, params) {
             var arsipSheet = ss.getSheetByName('Arsip');
             if (arsipSheet) {
               var reqId = data[i][0];
-              var reqNoResmi = params.officialLetterNumber || data[i][9] || data[i][1];
+              var reqNoResmi = params.officialLetterNumber || data[i][colNoResmi - 1] || data[i][1];
               var reqNoPermohonan = data[i][1];
               var applicantName = data[i][2];
               var letterTypeName = data[i][5];
-              var issueDate = new Date().toLocaleDateString('id-ID');
-              var fileUrl = params.issuedDocumentUrl || '';
+              var issueDate = params.officialLetterDate || new Date().toLocaleDateString('id-ID');
+              var fileUrl = finalFileUrl || (colFileResmi <= data[i].length ? data[i][colFileResmi - 1] : '') || '';
               var notes = params.processingNote || '';
 
               // Ekstrak tanggal kegiatan dari formData jika ada
@@ -897,7 +951,7 @@ function handleRoute(action, params) {
         }
 
         logActivity(ss, params.actor || 'Admin', 'UPDATE_STATUS', 'Nomor: ' + params.requestNumber + ' -> ' + params.status);
-        return { success: true, message: "Status updated" };
+        return { success: true, message: "Status updated", fileUrl: finalFileUrl };
       }
     }
     return { success: false, message: "Request not found" };
@@ -1103,7 +1157,7 @@ function bootstrapSheets(ss) {
 
   const requiredSheets = [
     { name: 'Pengguna', headers: ['ID', 'Username', 'Password', 'Nama', 'Role', 'Email', 'CreatedAt'] },
-    { name: 'Permohonan', headers: ['ID', 'NoPermohonan', 'NamaPemohon', 'Email', 'HP', 'JenisSurat', 'Status', 'FormData', 'Tanggal', 'NoSuratResmi'] },
+    { name: 'Permohonan', headers: ['ID', 'NoPermohonan', 'NamaPemohon', 'Email', 'HP', 'JenisSurat', 'Status', 'FormData', 'Tanggal', 'NoSuratResmi', 'FileSuratResmi', 'TanggalTerbitResmi'] },
     { name: 'Pengaduan', headers: ['ID', 'NoTiket', 'NamaPengirim', 'Kontak', 'Kategori', 'IsiPesan', 'Status', 'TanggapanAdmin', 'TanggalMasuk', 'TanggalDitanggapi', 'DitanggapiOleh'] },
     { name: 'MasterKelas', headers: ['ID', 'NamaKelas', 'Tingkat', 'StatusAktif', 'Urutan'] },
     { name: 'MasterJurusan', headers: ['ID', 'KodeJurusan', 'NamaJurusan', 'StatusAktif', 'Urutan'] },
@@ -1197,6 +1251,26 @@ function bootstrapSheets(ss) {
         if (needArsipFix) {
           sheet.getRange(1, 1, 1, req.headers.length).setValues([req.headers]);
           sheet.getRange(1, 1, 1, req.headers.length).setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+        }
+      }
+
+      // Jika sheet Permohonan sudah ada, periksa apakah header FileSuratResmi dan TanggalTerbitResmi sudah ada
+      if (req.name === 'Permohonan') {
+        var curPermohonanH = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 10)).getValues()[0];
+        var colFileSuratResmi = -1;
+        var colTglTerbitResmi = -1;
+        for (var hp = 0; hp < curPermohonanH.length; hp++) {
+          var hName = String(curPermohonanH[hp]).trim().toLowerCase();
+          if (hName === 'filesuratresmi' || hName === 'fileurl' || hName === 'dokumenresmi') colFileSuratResmi = hp + 1;
+          if (hName === 'tanggalterbitresmi' || hName === 'tanggalterbit' || hName === 'tgletterbit') colTglTerbitResmi = hp + 1;
+        }
+        if (colFileSuratResmi === -1) {
+          colFileSuratResmi = curPermohonanH.length + 1;
+          sheet.getRange(1, colFileSuratResmi).setValue('FileSuratResmi').setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
+        }
+        if (colTglTerbitResmi === -1) {
+          colTglTerbitResmi = colFileSuratResmi + 1;
+          sheet.getRange(1, colTglTerbitResmi).setValue('TanggalTerbitResmi').setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
         }
       }
     }
@@ -1361,34 +1435,64 @@ function logActivity(ss, user, action, details) {
     status: string,
     actor: string,
     officialLetterNumber?: string,
-    issuedDocumentUrl?: string
-  ): Promise<boolean> {
+    issuedDocumentUrl?: string,
+    officialLetterDate?: string,
+    officialFileName?: string,
+    id?: string
+  ): Promise<{ success: boolean; fileUrl?: string }> {
     const settings = StorageService.getSettings();
     const url = settings.webAppUrl || (settings as any).appsScriptWebAppUrl;
-    if (!url) return false;
+    if (!url) return { success: false };
 
     try {
-      const payload = {
+      const payload: any = {
         action: 'updateStatus',
         requestNumber,
+        id: id || '',
         status,
         actor,
         officialLetterNumber: officialLetterNumber || '',
         issuedDocumentUrl: issuedDocumentUrl || '',
+        officialLetterDate: officialLetterDate || '',
+        officialFileName: officialFileName || '',
       };
 
-      await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify(payload),
-        mode: 'no-cors',
-      });
-      return true;
+      // Jika issuedDocumentUrl berupa base64 / data:pdf, kirim sebagai fileData agar Apps Script mengupload ke Google Drive
+      if (issuedDocumentUrl && (issuedDocumentUrl.startsWith('data:') || issuedDocumentUrl.startsWith('JVBER'))) {
+        payload.fileData = issuedDocumentUrl;
+        payload.fileName = officialFileName || `Surat_Resmi_${(officialLetterNumber || requestNumber).replace(/[/\\?%*:|"<>]/g, '_')}.pdf`;
+      }
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+          },
+          body: JSON.stringify(payload),
+        });
+        if (response.ok) {
+          const resJson = await response.json();
+          if (resJson && resJson.fileUrl) {
+            return { success: true, fileUrl: resJson.fileUrl };
+          }
+        }
+      } catch (postErr) {
+        // Fallback dengan mode no-cors jika terhalang browser CORS
+        await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+          },
+          body: JSON.stringify(payload),
+          mode: 'no-cors',
+        });
+      }
+
+      return { success: true };
     } catch (err) {
       console.warn('Update status to Google Apps Script error:', err);
-      return false;
+      return { success: false };
     }
   },
 
@@ -2196,9 +2300,25 @@ function logActivity(ss, user, action, details) {
       }
 
       const permohonanList = data.permohonan || [];
+      const arsipList = data.arsip || [];
       const currentSubmissions = StorageService.getSubmissions();
       const availableLetterTypes = StorageService.getLetterTypes();
       const parsedSubmissions: any[] = [];
+
+      // Buat lookup maps dari sheet Arsip untuk cross-reference file dokumen dan tanggal terbit resmi
+      const arsipMapByReqNum = new Map<string, any>();
+      const arsipMapByNoResmi = new Map<string, any>();
+      const arsipMapById = new Map<string, any>();
+      if (Array.isArray(arsipList)) {
+        for (const a of arsipList) {
+          const aId = String(a.ID || a.id || '').trim();
+          const aReqNum = String(a.NoPermohonan || a.requestNumber || '').trim();
+          const aNoResmi = String(a.NoSuratResmi || a.officialLetterNumber || '').trim();
+          if (aId) arsipMapById.set(aId, a);
+          if (aReqNum) arsipMapByReqNum.set(aReqNum, a);
+          if (aNoResmi) arsipMapByNoResmi.set(aNoResmi, a);
+        }
+      }
 
       const seenSubIds = new Set<string>();
       for (let i = 0; i < permohonanList.length; i++) {
@@ -2230,12 +2350,19 @@ function logActivity(ss, user, action, details) {
           (s) => (s.requestNumber && s.requestNumber.trim() === reqNum.trim()) || s.id === itemId
         );
 
+        const matchedArsip = arsipMapByReqNum.get(reqNum) || (rawItemId ? arsipMapById.get(rawItemId) : null) || (item.NoSuratResmi ? arsipMapByNoResmi.get(String(item.NoSuratResmi).trim()) : null);
+
         const rawTypeName = String(item.JenisSurat || item.letterTypeName || existingSub?.letterTypeName || 'Surat Keterangan').trim();
         const matchedType = availableLetterTypes.find(
           (lt) => lt.name.trim().toLowerCase() === rawTypeName.toLowerCase() ||
                   lt.name.trim().toLowerCase().includes(rawTypeName.toLowerCase()) ||
                   rawTypeName.toLowerCase().includes(lt.name.trim().toLowerCase())
         );
+
+        const rawOfficialNo = String(item.NoSuratResmi || item.officialLetterNumber || matchedArsip?.NoSuratResmi || existingSub?.officialLetterNumber || '').trim();
+        const rawOfficialDate = String(item.TanggalTerbitResmi || item.TanggalTerbit || item.officialLetterDate || matchedArsip?.TanggalTerbit || existingSub?.officialLetterDate || '').trim();
+        const rawOfficialFile = String(item.FileSuratResmi || item.DokumenResmi || item.FileUrl || item.issuedDocumentUrl || matchedArsip?.FileUrl || existingSub?.issuedDocumentUrl || '').trim();
+        const rawOfficialFileName = String(item.NamaFileSuratResmi || item.officialFileName || existingSub?.formData?._officialFileName || '').trim();
 
         parsedSubmissions.push({
           id: itemId,
@@ -2249,14 +2376,14 @@ function logActivity(ss, user, action, details) {
           formData: {
             ...(existingSub?.formData || {}),
             ...formData,
-            ...(existingSub?.formData?._officialFileName ? { _officialFileName: existingSub.formData._officialFileName } : {}),
-            ...(existingSub?.formData?._officialFileUrl ? { _officialFileUrl: existingSub.formData._officialFileUrl } : {}),
+            ...(rawOfficialFileName ? { _officialFileName: rawOfficialFileName } : (existingSub?.formData?._officialFileName ? { _officialFileName: existingSub.formData._officialFileName } : {})),
+            ...(rawOfficialFile ? { _officialFileUrl: rawOfficialFile } : (existingSub?.formData?._officialFileUrl ? { _officialFileUrl: existingSub.formData._officialFileUrl } : {})),
           },
           uploadedFiles: existingSub?.uploadedFiles,
           status: item.Status || existingSub?.status || 'Menunggu',
-          officialLetterNumber: item.NoSuratResmi || existingSub?.officialLetterNumber || undefined,
-          officialLetterDate: existingSub?.officialLetterDate,
-          issuedDocumentUrl: item.FileUrl || item.issuedDocumentUrl || existingSub?.issuedDocumentUrl || undefined,
+          officialLetterNumber: rawOfficialNo || undefined,
+          officialLetterDate: rawOfficialDate || undefined,
+          issuedDocumentUrl: rawOfficialFile || undefined,
           qrVerificationCode: existingSub?.qrVerificationCode || `VERIF-${reqNum}-${Math.floor(1000 + Math.random() * 9000)}`,
           timeline: existingSub?.timeline && existingSub.timeline.length > 0 ? existingSub.timeline : [
             {

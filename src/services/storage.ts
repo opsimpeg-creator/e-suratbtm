@@ -914,7 +914,28 @@ export const StorageService = {
 
     // Update status di Google Spreadsheet
     import('./appsScript').then(({ AppsScriptService }) => {
-      AppsScriptService.updateStatusInAppsScript(req.requestNumber, newStatus, actorName, officialLetterNumber, req.issuedDocumentUrl).catch((err) => {
+      AppsScriptService.updateStatusInAppsScript(
+        req.requestNumber,
+        newStatus,
+        actorName,
+        officialLetterNumber,
+        req.issuedDocumentUrl,
+        officialLetterDate,
+        officialFileName || req.formData?._officialFileName,
+        req.id
+      ).then((res) => {
+        if (res && res.fileUrl) {
+          const freshSubs = this.getSubmissions();
+          const target = freshSubs.find((s) => s.id === req.id || s.requestNumber === req.requestNumber);
+          if (target) {
+            target.issuedDocumentUrl = res.fileUrl;
+            if (target.formData) {
+              target.formData._officialFileUrl = res.fileUrl;
+            }
+            setStored(KEYS.SUBMISSIONS, freshSubs);
+          }
+        }
+      }).catch((err) => {
         console.warn('Apps Script update status background:', err);
       });
     });
