@@ -30,8 +30,8 @@ export const INITIAL_SETTINGS: SchoolSettings = {
   letterNumberPattern: '420/{SEQ}/TU-SMK/{YEAR}',
   currentSeqNumber: 14,
   themePrimaryColor: '#1e40af', // Blue 800
-  spreadsheetId: '1lQ4BNn0l9Qjp06g-QS0ilD1I8-2nX4pK7a4qbRv34OI',
-  webAppUrl: 'https://script.google.com/macros/s/AKfycbxeG-eeKjzROeqMsaK_LNpTWDLmK6FH9fIlUHqYill11cWaFktFMbmGhZGaq8TMDk6cfQ/exec',
+  spreadsheetId: '1GrPji3DsFvLGEqzR7VgnvNMnCkkRttOdtsEwGytWZGM',
+  webAppUrl: 'https://script.google.com/macros/s/AKfycbzYaZU_D5OMGfeIbiVxMZCQHfJ5HyZs5YyiqbOF-Lr2K_yN1nhNyxX5ETU8GOuHGsA0/exec',
   autoSync: true,
   emailNotificationsEnabled: true,
   waNotificationsEnabled: true,
