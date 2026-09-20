@@ -1,0 +1,1351 @@
+import {
+  SchoolSettings,
+  LetterType,
+  FormField,
+  SubmissionRequest,
+  LetterTemplate,
+  User,
+  UserRole,
+  AuditLog,
+  RequestStatus,
+  ComplaintTicket,
+  ComplaintStatus,
+  ArchiveDocument,
+  ArchiveStatus
+} from '../types';
+import {
+  INITIAL_SETTINGS,
+  INITIAL_USERS,
+  INITIAL_LETTER_TYPES,
+  INITIAL_FORM_FIELDS,
+  INITIAL_TEMPLATES,
+  INITIAL_SUBMISSIONS,
+  DEMO_SAMPLE_SUBMISSIONS,
+  INITIAL_AUDIT_LOGS,
+  INITIAL_COMPLAINTS
+} from '../data/defaultData';
+// Helper to detect dummy test items or ghost empty submissions
+const isDummySubmission = (s: any) => {
+  if (!s) return true;
+  const num = (s.requestNumber || '').trim();
+  const name = (s.applicantName || '').trim().toLowerCase();
+  if (!num || num === 'SRT-000' || (!name || name === 'pemohon')) {
+    return true;
+  }
+  return (
+    num === 'SRT-202602-0001' ||
+    num === 'SRT-202602-0002' ||
+    name.includes('ahmad fadillah') ||
+    name.includes('siti nurhaliza')
+  );
+};
+
+const isDummyComplaint = (c: any) => {
+  if (!c) return true;
+  const num = (c.ticketNumber || '').trim();
+  const name = (c.senderName || '').trim().toLowerCase();
+  return (
+    num === 'TKT-202602-0001' ||
+    num === 'TKT-202602-0002' ||
+    name.includes('budi santoso') ||
+    name.includes('dewi sartika')
+  );
+};
+
+const KEYS = {
+  SETTINGS: 'tu_esurat_settings_v1',
+  USERS: 'tu_esurat_users_v1',
+  LETTER_TYPES: 'tu_esurat_letter_types_v1',
+  FORM_FIELDS: 'tu_esurat_form_fields_v1',
+  TEMPLATES: 'tu_esurat_templates_v1',
+  SUBMISSIONS: 'tu_esurat_submissions_v1',
+  AUDIT_LOGS: 'tu_esurat_audit_logs_v1',
+  COMPLAINTS: 'tu_esurat_complaints_v1',
+  CURRENT_USER: 'tu_esurat_current_user_v1',
+};
+
+// Immediate Synchronous Purge: clean any residual dummy entries and duplicate IDs from browser storage before components load
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    const rawSub = localStorage.getItem(KEYS.SUBMISSIONS);
+    if (rawSub) {
+      const parsed = JSON.parse(rawSub);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter((s: any) => !isDummySubmission(s));
+        const seenIds = new Set<string>();
+        let hasDuplicate = false;
+        const deduplicated = cleaned.map((item: any, idx: number) => {
+          if (!item.id || seenIds.has(item.id)) {
+            hasDuplicate = true;
+            const uniqueId = `sub-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+            seenIds.add(uniqueId);
+            return { ...item, id: uniqueId };
+          }
+          seenIds.add(item.id);
+          return item;
+        });
+
+        if (cleaned.length !== parsed.length || hasDuplicate) {
+          localStorage.setItem(KEYS.SUBMISSIONS, JSON.stringify(deduplicated));
+        }
+      }
+    }
+
+    const rawComp = localStorage.getItem(KEYS.COMPLAINTS);
+    if (rawComp) {
+      const parsed = JSON.parse(rawComp);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter((c: any) => !isDummyComplaint(c));
+        const seenCompIds = new Set<string>();
+        let hasDuplicateComp = false;
+        const deduplicatedComp = cleaned.map((item: any, idx: number) => {
+          if (!item.id || seenCompIds.has(item.id)) {
+            hasDuplicateComp = true;
+            const uniqueId = `tkt-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+            seenCompIds.add(uniqueId);
+            return { ...item, id: uniqueId };
+          }
+          seenCompIds.add(item.id);
+          return item;
+        });
+
+        if (cleaned.length !== parsed.length || hasDuplicateComp) {
+          localStorage.setItem(KEYS.COMPLAINTS, JSON.stringify(deduplicatedComp));
+        }
+      }
+    }
+
+    // Purge old mock default form fields if any remain
+    const rawFields = localStorage.getItem(KEYS.FORM_FIELDS);
+    if (rawFields) {
+      const parsedF = JSON.parse(rawFields);
+      if (Array.isArray(parsedF)) {
+        const dummyFieldIds = new Set([
+          'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108',
+          'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
+          'f-301', 'f-302', 'f-303', 'f-304', 'f-305'
+        ]);
+        const cleanedF = parsedF.filter((f: any) => !dummyFieldIds.has(f.id) && !['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
+        if (cleanedF.length !== parsedF.length) {
+          localStorage.setItem(KEYS.FORM_FIELDS, JSON.stringify(cleanedF));
+        }
+      }
+    }
+
+    // Purge old mock default letter types if they haven't been configured/synced with spreadsheet
+    const rawTypes = localStorage.getItem(KEYS.LETTER_TYPES);
+    if (rawTypes) {
+      const parsed = JSON.parse(rawTypes);
+      if (Array.isArray(parsed)) {
+        // If it still contains the untouched 6 dummy types from original template, clean them up
+        const isOldDefaultMocks = parsed.length === 6 && parsed.some((t: any) => t.id === 'lt-6' && t.code === 'SKBP') && parsed.some((t: any) => t.id === 'lt-5' && t.code === 'PKL');
+        if (isOldDefaultMocks) {
+          // Keep only active registered types or reset to empty until fetched from spreadsheet
+          const onlyActiveCustom = parsed.filter((t: any) => !['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(t.id));
+          localStorage.setItem(KEYS.LETTER_TYPES, JSON.stringify(onlyActiveCustom));
+        }
+      }
+    }
+
+    // Purge obsolete mock users ('u3' / loket and 'u2' / staf_tu / Budi Santoso) from local storage
+    const rawUsers = localStorage.getItem(KEYS.USERS);
+    if (rawUsers) {
+      const parsedU = JSON.parse(rawUsers);
+      if (Array.isArray(parsedU)) {
+        const cleanedU = parsedU.filter((u: any) => {
+          if (!u) return false;
+          if (u.id === 'u3' || u.username === 'loket') return false;
+          if (u.id === 'u2' || u.username === 'staf_tu' || String(u.name || '').toLowerCase().includes('budi santoso')) {
+            return false;
+          }
+          return true;
+        });
+        if (cleanedU.length !== parsedU.length) {
+          localStorage.setItem(KEYS.USERS, JSON.stringify(cleanedU));
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+// Helper to safely load from LocalStorage
+function getStored<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error(`Error reading ${key} from storage:`, err);
+    return fallback;
+  }
+}
+
+function setStored<T>(key: string, value: T, notify = true): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    if (notify && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tu_storage_updated', { detail: { key, value } }));
+    }
+  } catch (err) {
+    console.error(`Error writing ${key} to storage:`, err);
+  }
+}
+
+// Storage API Engine
+export const StorageService = {
+  // Google Spreadsheet is the 100% Single Source of Truth
+  initFirebase(_onUpdate?: () => void): () => void {
+    return () => {};
+  },
+
+  // Settings
+  getSettings(): SchoolSettings {
+    const settings = getStored<SchoolSettings>(KEYS.SETTINGS, INITIAL_SETTINGS);
+    let dirty = false;
+    // Only set default if spreadsheetId is completely absent or empty
+    if (!settings.spreadsheetId || settings.spreadsheetId.trim() === '') {
+      settings.spreadsheetId = '1lQ4BNn0l9Qjp06g-QSOilD1I8-2nX4pK7a4qbRv34OI';
+      dirty = true;
+    }
+    if (!settings.webAppUrl || settings.webAppUrl.includes('AKfycbx...')) {
+      settings.webAppUrl = 'https://script.google.com/macros/s/AKfycbxeG-eeKjzROeqMsaK_LNpTWDLmK6FH9fIlUHqYill11cWaFktFMbmGhZGaq8TMDk6cfQ/exec';
+      dirty = true;
+    }
+    if (!settings.classes || settings.classes.length === 0) {
+      settings.classes = INITIAL_SETTINGS.classes;
+      dirty = true;
+    }
+    // Check if majors need cleanup (e.g. contains removed majors like APHPi or APAT, or old defaults)
+    const hasOutdatedMajors = (settings.majors || []).some(
+      (m) => m.includes('APHPi') || m.includes('APAT') || m.includes('Perikanan') || m.includes('TSM')
+    );
+    if (!settings.majors || settings.majors.length === 0 || hasOutdatedMajors) {
+      settings.majors = INITIAL_SETTINGS.majors;
+      dirty = true;
+    }
+    if (!settings.operatingHours) {
+      settings.operatingHours = INITIAL_SETTINGS.operatingHours || {
+        isRamadanMode: false,
+        monThuHours: '08.00 - 15.00 WITA',
+        friHours: '08.00 - 11.30 WITA',
+        ramadanHours: '08.00 - 13.00 WITA',
+        ramadanNote: 'Khusus Selama Bulan Suci Ramadhan',
+        generalNote: 'Sabtu, Minggu & Hari Libur Nasional Tutup'
+      };
+      dirty = true;
+    }
+    if (!settings.logoUrl || settings.logoUrl.includes('unsplash.com')) {
+      settings.logoUrl = INITIAL_SETTINGS.logoUrl;
+      dirty = true;
+    }
+    if (dirty) {
+      setStored(KEYS.SETTINGS, settings);
+    }
+    return settings;
+  },
+  saveSettings(settings: SchoolSettings): void {
+    setStored(KEYS.SETTINGS, settings);
+    // Automatic sync to Apps Script for NomorSurat is disabled because letter numbers are manually managed
+  },
+
+  // Class Management Helpers
+  addClass(className: string): boolean {
+    if (!className.trim()) return false;
+    const settings = this.getSettings();
+    const list = settings.classes || [];
+    if (list.includes(className.trim())) return false;
+    settings.classes = [...list, className.trim()];
+    this.saveSettings(settings);
+    this.addAuditLog('super_admin', 'TAMBAH_KELAS', `Menambahkan master kelas baru: ${className}`);
+    return true;
+  },
+
+  updateClass(oldName: string, newName: string): boolean {
+    if (!newName.trim()) return false;
+    const settings = this.getSettings();
+    const list = settings.classes || [];
+    const idx = list.indexOf(oldName);
+    if (idx === -1) return false;
+    list[idx] = newName.trim();
+    settings.classes = [...list];
+    this.saveSettings(settings);
+    this.addAuditLog('super_admin', 'UBAH_KELAS', `Mengubah master kelas ${oldName} menjadi ${newName}`);
+    return true;
+  },
+
+  deleteClass(className: string): boolean {
+    const settings = this.getSettings();
+    const list = settings.classes || [];
+    const filtered = list.filter((c) => c !== className);
+    if (filtered.length === list.length) return false;
+    settings.classes = filtered;
+    this.saveSettings(settings);
+    this.addAuditLog('super_admin', 'HAPUS_KELAS', `Menghapus master kelas: ${className}`);
+    return true;
+  },
+
+  // Major / Konsentrasi Keahlian Management Helpers
+  addMajor(majorName: string): boolean {
+    if (!majorName.trim()) return false;
+    const settings = this.getSettings();
+    const list = settings.majors || [];
+    if (list.includes(majorName.trim())) return false;
+    settings.majors = [...list, majorName.trim()];
+    this.saveSettings(settings);
+    this.addAuditLog('super_admin', 'TAMBAH_JURUSAN', `Menambahkan konsentrasi keahlian baru: ${majorName}`);
+    return true;
+  },
+
+  updateMajor(oldName: string, newName: string): boolean {
+    if (!newName.trim()) return false;
+    const settings = this.getSettings();
+    const list = settings.majors || [];
+    const idx = list.indexOf(oldName);
+    if (idx === -1) return false;
+    list[idx] = newName.trim();
+    settings.majors = [...list];
+    this.saveSettings(settings);
+    this.addAuditLog('super_admin', 'UBAH_JURUSAN', `Mengubah konsentrasi keahlian ${oldName} menjadi ${newName}`);
+    return true;
+  },
+
+  deleteMajor(majorName: string): boolean {
+    const settings = this.getSettings();
+    const list = settings.majors || [];
+    const filtered = list.filter((m) => m !== majorName);
+    if (filtered.length === list.length) return false;
+    settings.majors = filtered;
+    this.saveSettings(settings);
+    this.addAuditLog('super_admin', 'HAPUS_JURUSAN', `Menghapus konsentrasi keahlian: ${majorName}`);
+    return true;
+  },
+
+  // Users
+  getUsers(): User[] {
+    const list = getStored<User[]>(KEYS.USERS, INITIAL_USERS);
+    return list.map((u) => ({
+      ...u,
+      role: (u.role === 'super_admin' ? 'super_admin' : 'admin_tu') as UserRole,
+      password: u.password || '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
+      status: u.status || 'active',
+    }));
+  },
+  saveUsers(users: User[], syncToAppsScript: boolean = false): void {
+    setStored(KEYS.USERS, users);
+    if (syncToAppsScript) {
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.syncAllUsersToAppsScript().catch((err) => {
+          console.warn('Apps Script sync users error:', err);
+        });
+      });
+    }
+  },
+  deleteUser(userId: string): boolean {
+    const users = this.getUsers();
+    const target = users.find((u) => u.id === userId);
+    if (!target) return false;
+    const filtered = users.filter((u) => u.id !== userId);
+    this.saveUsers(filtered, false);
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.deleteUserFromAppsScript(userId, target.username).catch((err) => {
+        console.warn('Apps Script delete user error:', err);
+      });
+    });
+    this.addAuditLog('super_admin', 'DELETE_USER', `Menghapus akun pengguna: ${target.username} (${target.name})`);
+    return true;
+  },
+  toggleUserStatus(userId: string): boolean {
+    const users = this.getUsers();
+    const idx = users.findIndex((u) => u.id === userId);
+    if (idx !== -1) {
+      const newStatus = users[idx].status === 'inactive' ? 'active' : 'inactive';
+      users[idx].status = newStatus;
+      this.saveUsers(users, false);
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.sendUserToAppsScript(users[idx]).catch((err) => {
+          console.warn('Apps Script update user error:', err);
+        });
+      });
+      this.addAuditLog('super_admin', 'TOGGLE_USER_STATUS', `Mengubah status pengguna ${users[idx].username} menjadi: ${newStatus}`);
+      return true;
+    }
+    return false;
+  },
+  updateUserPassword(userId: string, newPassword: string): boolean {
+    const users = this.getUsers();
+    const idx = users.findIndex((u) => u.id === userId);
+    if (idx !== -1) {
+      users[idx].password = newPassword;
+      this.saveUsers(users, false);
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.sendUserToAppsScript(users[idx]).catch((err) => {
+          console.warn('Apps Script update password error:', err);
+        });
+      });
+      this.addAuditLog('super_admin', 'RESET_PASSWORD', `Mengubah password untuk pengguna: ${users[idx].username}`);
+      return true;
+    }
+    return false;
+  },
+  getCurrentUser(): User | null {
+    return getStored<User | null>(KEYS.CURRENT_USER, null);
+  },
+  setCurrentUser(user: User | null): void {
+    setStored(KEYS.CURRENT_USER, user);
+  },
+
+  // Letter Types
+  getLetterTypes(): LetterType[] {
+    const list = getStored<LetterType[]>(KEYS.LETTER_TYPES, []);
+    const sourceList = list && list.length > 0 ? list : INITIAL_LETTER_TYPES;
+
+    // Filter out obsolete dummy IDs if custom / spreadsheet-synced letter types exist
+    const hasSpreadsheetLetterTypes = sourceList.some(
+      (t) => t.id !== 'lt-1' && t.id !== 'lt-2' && t.id !== 'lt-3' && t.id !== 'lt-4' && t.id !== 'lt-5' && t.id !== 'lt-6'
+    );
+    const dummyLetterTypeIds = new Set(
+      hasSpreadsheetLetterTypes ? ['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'] : ['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6']
+    );
+
+    // Deduplicate by code if any duplicates exist (e.g. SKAS with lt-1 and lt-1787536998956)
+    const seenCodes = new Set<string>();
+    const deduped: LetterType[] = [];
+    for (const t of sourceList) {
+      if (dummyLetterTypeIds.has(t.id)) continue;
+      const codeKey = (t.code || t.name).trim().toUpperCase();
+      if (seenCodes.has(codeKey)) continue;
+      seenCodes.add(codeKey);
+      deduped.push(t);
+    }
+
+    // Merge in any initial letter types if missing from local storage
+    for (const initType of INITIAL_LETTER_TYPES) {
+      const codeKey = (initType.code || initType.name).trim().toUpperCase();
+      if (!seenCodes.has(codeKey)) {
+        seenCodes.add(codeKey);
+        deduped.push(initType);
+      }
+    }
+
+    if (deduped.length > 0) {
+      deduped.sort((a, b) => (a.order || 0) - (b.order || 0));
+      return deduped;
+    }
+    return INITIAL_LETTER_TYPES;
+  },
+  saveLetterTypes(types: LetterType[], pushToAppsScript = false): void {
+    // Filter out dummy/obsolete types
+    const hasSpreadsheetLetterTypes = types.some(
+      (t) => t.id !== 'lt-1' && t.id !== 'lt-2' && t.id !== 'lt-3' && t.id !== 'lt-4' && t.id !== 'lt-5' && t.id !== 'lt-6'
+    );
+    const dummyLetterTypeIds = new Set(
+      hasSpreadsheetLetterTypes ? ['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'] : ['lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6']
+    );
+    const cleanTypes = types.filter((t) => !dummyLetterTypeIds.has(t.id));
+    setStored(KEYS.LETTER_TYPES, cleanTypes);
+
+    // Only push to Apps Script when explicitly requested
+    if (pushToAppsScript) {
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.syncAllLetterTypesToAppsScript().catch((err) => {
+          console.warn('Apps Script sync letter types notice:', err);
+        });
+      });
+    }
+  },
+  addLetterType(newType: Omit<LetterType, 'id'>): LetterType {
+    const types = this.getLetterTypes();
+    const created: LetterType = {
+      ...newType,
+      id: 'lt-' + Date.now(),
+    };
+    types.push(created);
+    this.saveLetterTypes(types);
+    this.addAuditLog('super_admin', 'TAMBAH_JENIS_SURAT', `Menambahkan jenis surat baru: ${created.name}`);
+
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.sendLetterTypeToAppsScript(created).catch((err) => {
+        console.warn('Apps Script send letter type error:', err);
+      });
+    });
+
+    return created;
+  },
+  updateLetterType(id: string, updates: Partial<LetterType>): void {
+    const types = this.getLetterTypes();
+    const idx = types.findIndex((t) => t.id === id);
+    if (idx !== -1) {
+      types[idx] = { ...types[idx], ...updates };
+      this.saveLetterTypes(types);
+      this.addAuditLog('super_admin', 'EDIT_JENIS_SURAT', `Memperbarui jenis surat ID: ${id}`);
+
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.sendLetterTypeToAppsScript(types[idx]).catch((err) => {
+          console.warn('Apps Script update letter type error:', err);
+        });
+      });
+    }
+  },
+  deleteLetterType(id: string): void {
+    const types = this.getLetterTypes().filter((t) => t.id !== id);
+    this.saveLetterTypes(types);
+    const fields = this.getFormFields().filter((f) => f.letterTypeId !== id);
+    this.saveFormFields(fields);
+    this.addAuditLog('super_admin', 'HAPUS_JENIS_SURAT', `Menghapus jenis surat ID: ${id}`);
+
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.syncAllLetterTypesToAppsScript().catch((err) => {
+        console.warn('Apps Script sync letter types error:', err);
+      });
+    });
+  },
+
+  // Form Fields
+  getFormFields(): FormField[] {
+    const list = getStored<FormField[]>(KEYS.FORM_FIELDS, []);
+    const dummyFieldIds = new Set([
+      'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108', 'f-109',
+      'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
+      'f-301', 'f-302', 'f-303', 'f-304', 'f-305'
+    ]);
+    return list.filter((f) => !dummyFieldIds.has(f.id) && !['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
+  },
+  getFieldsForLetterType(letterTypeId: string): FormField[] {
+    const letterTypes = this.getLetterTypes();
+    const targetType = letterTypes.find((t) => t.id === letterTypeId || t.code === letterTypeId);
+    const targetId = targetType?.id || letterTypeId;
+    const targetCode = targetType?.code;
+
+    const fields = this.getFormFields().filter(
+      (f) =>
+        f.letterTypeId === targetId ||
+        (targetCode && f.letterTypeId === targetCode) ||
+        (letterTypeId && f.letterTypeId === letterTypeId)
+    );
+    return fields.sort((a, b) => a.order - b.order);
+  },
+  async saveFormFields(fields: FormField[], syncToCloud: boolean = true): Promise<void> {
+    const dummyFieldIds = new Set([
+      'f-101', 'f-102', 'f-103', 'f-104', 'f-105', 'f-106', 'f-107', 'f-108', 'f-109',
+      'f-201', 'f-202', 'f-203', 'f-204', 'f-205', 'f-206', 'f-207',
+      'f-301', 'f-302', 'f-303', 'f-304', 'f-305'
+    ]);
+    const cleanFields = fields.filter((f) => !dummyFieldIds.has(f.id) && !['lt-1', 'lt-2', 'lt-3', 'lt-4', 'lt-5', 'lt-6'].includes(f.letterTypeId));
+    setStored(KEYS.FORM_FIELDS, cleanFields);
+    if (syncToCloud) {
+      import('./appsScript').then(({ AppsScriptService }) => {
+        AppsScriptService.syncAllFieldsToAppsScript(cleanFields).catch((err) => {
+          console.warn('Apps Script sync fields notice:', err);
+        });
+      });
+    }
+  },
+  async saveSingleFormField(field: FormField): Promise<void> {
+    const allFields = this.getFormFields();
+    const idx = allFields.findIndex((f) => f.id === field.id);
+    if (idx !== -1) {
+      allFields[idx] = field;
+    } else {
+      allFields.push(field);
+    }
+    setStored(KEYS.FORM_FIELDS, allFields);
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.sendFieldToAppsScript(field).catch((err) => {
+        console.warn('Apps Script save field notice:', err);
+      });
+    });
+  },
+  async deleteFormField(fieldId: string): Promise<void> {
+    const allFields = this.getFormFields().filter((f) => f.id !== fieldId);
+    setStored(KEYS.FORM_FIELDS, allFields);
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.deleteFieldFromAppsScript(fieldId).catch((err) => {
+        console.warn('Apps Script delete field notice:', err);
+      });
+    });
+  },
+
+  // Templates
+  getTemplates(): LetterTemplate[] {
+    return getStored<LetterTemplate[]>(KEYS.TEMPLATES, INITIAL_TEMPLATES);
+  },
+  getTemplateForLetterType(letterTypeId: string): LetterTemplate | undefined {
+    return this.getTemplates().find((t) => t.letterTypeId === letterTypeId);
+  },
+  saveTemplate(template: LetterTemplate): void {
+    const templates = this.getTemplates();
+    const idx = templates.findIndex((t) => t.id === template.id || t.letterTypeId === template.letterTypeId);
+    if (idx !== -1) {
+      templates[idx] = template;
+    } else {
+      templates.push(template);
+    }
+    setStored(KEYS.TEMPLATES, templates);
+    this.addAuditLog('admin_tu', 'UPDATE_TEMPLATE', `Memperbarui template surat ID: ${template.id}`);
+  },
+
+  // Submissions (Only holds real submissions in admin/database)
+  getSubmissions(): SubmissionRequest[] {
+    const rawList = getStored<SubmissionRequest[]>(KEYS.SUBMISSIONS, INITIAL_SUBMISSIONS);
+    const realList = rawList.filter((s) => !isDummySubmission(s));
+    
+    // Ensure unique IDs across all submissions
+    const seenIds = new Set<string>();
+    let hasDupes = realList.length !== rawList.length;
+    const deduplicatedList = realList.map((item, idx) => {
+      if (!item.id || seenIds.has(item.id)) {
+        hasDupes = true;
+        const uniqueId = `sub-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+        seenIds.add(uniqueId);
+        return { ...item, id: uniqueId };
+      }
+      seenIds.add(item.id);
+      return item;
+    });
+
+    if (hasDupes) {
+      setTimeout(() => {
+        setStored(KEYS.SUBMISSIONS, deduplicatedList, false);
+      }, 0);
+    }
+    return deduplicatedList;
+  },
+  getSampleSubmissions(): SubmissionRequest[] {
+    return DEMO_SAMPLE_SUBMISSIONS;
+  },
+  getSubmissionByNumber(requestNumber: string): SubmissionRequest | undefined {
+    let q = (requestNumber || '').trim();
+    if (!q) return undefined;
+
+    // If it's a URL or contains query parameters, extract the code
+    if (q.includes('http://') || q.includes('https://') || q.includes('?')) {
+      try {
+        const urlStr = q.startsWith('http') ? q : `https://dummy.app/${q}`;
+        const parsed = new URL(urlStr);
+        const extracted = parsed.searchParams.get('verify') || 
+                          parsed.searchParams.get('code') || 
+                          parsed.searchParams.get('qr') || 
+                          parsed.searchParams.get('v') || 
+                          parsed.searchParams.get('track') || 
+                          parsed.searchParams.get('resi') || 
+                          parsed.searchParams.get('req');
+        if (extracted) q = extracted.trim();
+      } catch {
+        // ignore fallback to raw string
+      }
+    }
+
+    const qLower = q.toLowerCase().trim();
+    const allList = [...this.getSubmissions(), ...DEMO_SAMPLE_SUBMISSIONS];
+
+    // 1. Exact matches
+    const exact = allList.find(
+      (s) =>
+        (s.requestNumber && s.requestNumber.toLowerCase().trim() === qLower) ||
+        (s.officialLetterNumber && s.officialLetterNumber.toLowerCase().trim() === qLower) ||
+        (s.qrVerificationCode && s.qrVerificationCode.toLowerCase().trim() === qLower) ||
+        (s.applicantName && s.applicantName.toLowerCase().trim() === qLower)
+    );
+    if (exact) return exact;
+
+    // 2. Partial/contains matches (e.g. VERIF-SRT-202608-0010-3776 contains SRT-202608-0010)
+    const partial = allList.find((s) => {
+      const reqNum = (s.requestNumber || '').toLowerCase().trim();
+      const qrCode = (s.qrVerificationCode || '').toLowerCase().trim();
+      const offNum = (s.officialLetterNumber || '').toLowerCase().trim();
+      
+      if (reqNum && (qLower.includes(reqNum) || reqNum.includes(qLower))) return true;
+      if (qrCode && (qLower.includes(qrCode) || qrCode.includes(qLower))) return true;
+      if (offNum && (qLower.includes(offNum) || offNum.includes(qLower))) return true;
+      return false;
+    });
+
+    return partial;
+  },
+  getSubmissionByQr(qrCode: string): SubmissionRequest | undefined {
+    return this.getSubmissionByNumber(qrCode);
+  },
+  /**
+   * Get all submissions belonging to the same official letter or group of collective participants.
+   * If an officialLetterNumber exists, it finds all submissions sharing that official letter number.
+   */
+  getCollectiveSubmissions(primaryReq: SubmissionRequest): SubmissionRequest[] {
+    if (!primaryReq) return [];
+    const allList = [...this.getSubmissions(), ...DEMO_SAMPLE_SUBMISSIONS];
+
+    // Case 1: If official letter number is set, group by official letter number
+    const offNum = (primaryReq.officialLetterNumber || '').trim().toLowerCase();
+    if (offNum) {
+      const matched = allList.filter(
+        (s) => (s.officialLetterNumber || '').trim().toLowerCase() === offNum
+      );
+      if (matched.length > 0) {
+        // Ensure unique by applicantName or id
+        const uniqueMap = new Map<string, SubmissionRequest>();
+        matched.forEach((m) => {
+          const key = (m.applicantName || m.id).trim().toLowerCase();
+          if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, m);
+          }
+        });
+        return Array.from(uniqueMap.values());
+      }
+    }
+
+    // Case 2: If primary request has qrVerificationCode that is shared
+    const qrCode = (primaryReq.qrVerificationCode || '').trim().toLowerCase();
+    if (qrCode) {
+      const matched = allList.filter(
+        (s) => (s.qrVerificationCode || '').trim().toLowerCase() === qrCode
+      );
+      if (matched.length > 1) {
+        const uniqueMap = new Map<string, SubmissionRequest>();
+        matched.forEach((m) => {
+          const key = (m.applicantName || m.id).trim().toLowerCase();
+          if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, m);
+          }
+        });
+        return Array.from(uniqueMap.values());
+      }
+    }
+
+    // Default: Return single primary request
+    return [primaryReq];
+  },
+  saveSubmissions(submissions: SubmissionRequest[]): void {
+    setStored(KEYS.SUBMISSIONS, submissions);
+  },
+  deleteSubmission(id: string): boolean {
+    const list = this.getSubmissions();
+    const target = list.find((s) => s.id === id);
+    if (!target) return false;
+    const filtered = list.filter((s) => s.id !== id);
+    setStored(KEYS.SUBMISSIONS, filtered);
+    this.addAuditLog('admin', 'DELETE_SUBMISSION', `Menghapus permohonan: ${target.requestNumber} (${target.applicantName})`);
+
+    // Sync delete to Google Apps Script
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.deleteSubmissionFromAppsScript(id, target.requestNumber).catch((err) => {
+        console.warn('Sync delete to Apps Script error:', err);
+      });
+    });
+    return true;
+  },
+  clearAllSubmissions(): void {
+    setStored(KEYS.SUBMISSIONS, []);
+    this.addAuditLog('admin', 'CLEAR_SUBMISSIONS', 'Mengosongkan seluruh data permohonan di aplikasi lokal.');
+  },
+
+  calculateNextRequestNumber(submissionsList?: SubmissionRequest[]): string {
+    const submissions = submissionsList || this.getSubmissions();
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '').slice(0, 6); // Format YYYYMM (misal: 202608)
+    const prefix = `SRT-${dateStr}-`;
+    const usedNums = new Set<number>();
+
+    submissions.forEach((s) => {
+      if (s.requestNumber && s.requestNumber.startsWith(prefix)) {
+        const numPart = parseInt(s.requestNumber.replace(prefix, ''), 10);
+        if (!isNaN(numPart) && numPart > 0) {
+          usedNums.add(numPart);
+        }
+      }
+    });
+
+    // OPSI B: Cari nomor integer terkecil (1, 2, 3, ...) yang belum terpakai / bolong
+    let seq = 1;
+    while (usedNums.has(seq)) {
+      seq++;
+    }
+
+    return `${prefix}${String(seq).padStart(4, '0')}`;
+  },
+
+  createSubmission(data: {
+    letterTypeId: string;
+    letterTypeName: string;
+    applicantName: string;
+    applicantEmail: string;
+    applicantPhone: string;
+    applicantRole: 'siswa' | 'alumni' | 'orang_tua' | 'lainnya';
+    formData: Record<string, any>;
+    uploadedFiles?: Record<string, { fileName: string; fileUrl: string; fileSize?: string }>;
+    customRequestNumber?: string;
+  }): SubmissionRequest {
+    const submissions = this.getSubmissions();
+    const requestNumber = data.customRequestNumber || this.calculateNextRequestNumber(submissions);
+
+    const newRequest: SubmissionRequest = {
+      id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+      requestNumber,
+      letterTypeId: data.letterTypeId,
+      letterTypeName: data.letterTypeName,
+      applicantName: data.applicantName,
+      applicantEmail: data.applicantEmail,
+      applicantPhone: data.applicantPhone,
+      applicantRole: data.applicantRole,
+      formData: data.formData,
+      uploadedFiles: data.uploadedFiles,
+      status: 'Menunggu',
+      qrVerificationCode: `VERIF-${requestNumber}-${Math.floor(1000 + Math.random() * 9000)}`,
+      timeline: [
+        {
+          status: 'Menunggu',
+          timestamp: new Date().toISOString(),
+          actor: `${data.applicantName} (Pemohon)`,
+          note: 'Pengajuan permohonan berhasil terkirim ke sistem Tata Usaha.',
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    submissions.unshift(newRequest);
+    setStored(KEYS.SUBMISSIONS, submissions);
+    this.addAuditLog('Sistem', 'AJUKAN_SURAT', `Pengajuan surat baru: ${requestNumber} (${data.applicantName})`);
+
+    // Otomatis kirim ke Google Apps Script Web App jika URL terkonfigurasi
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.sendSubmissionToAppsScript(newRequest).catch((err) => {
+        console.warn('Apps Script sync background:', err);
+      });
+    });
+
+    return newRequest;
+  },
+
+  async createSubmissionAsync(data: {
+    letterTypeId: string;
+    letterTypeName: string;
+    applicantName: string;
+    applicantEmail: string;
+    applicantPhone: string;
+    applicantRole: 'siswa' | 'alumni' | 'orang_tua' | 'lainnya';
+    formData: Record<string, any>;
+    uploadedFiles?: Record<string, { fileName: string; fileUrl: string; fileSize?: string }>;
+  }): Promise<SubmissionRequest> {
+    // 1. Coba periksa apakah nomor berikutnya bisa dialokasikan langsung dari Google Apps Script LockService
+    let allocatedNumber: string | undefined = undefined;
+    try {
+      const { AppsScriptService } = await import('./appsScript');
+      const nextNumFromSheet = await AppsScriptService.getNextAvailableNumberFromAppsScript();
+      if (nextNumFromSheet) {
+        allocatedNumber = nextNumFromSheet;
+      }
+    } catch (e) {
+      // fallback to local calculation
+    }
+
+    // 2. Buat objek submission
+    const newRequest = this.createSubmission({
+      ...data,
+      customRequestNumber: allocatedNumber,
+    });
+
+    // 3. Kirim ke Apps Script dan update jika nomor dikonfirmasi oleh Apps Script LockService
+    try {
+      const { AppsScriptService } = await import('./appsScript');
+      const res = await AppsScriptService.sendSubmissionToAppsScript(newRequest);
+      if (res.success && res.requestNumber && res.requestNumber !== newRequest.requestNumber) {
+        newRequest.requestNumber = res.requestNumber;
+        newRequest.qrVerificationCode = `VERIF-${res.requestNumber}-${Math.floor(1000 + Math.random() * 9000)}`;
+        const list = this.getSubmissions();
+        const idx = list.findIndex((s) => s.id === newRequest.id);
+        if (idx !== -1) {
+          list[idx] = newRequest;
+          setStored(KEYS.SUBMISSIONS, list);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return newRequest;
+  },
+
+  updateRequestStatus(
+    id: string,
+    newStatus: RequestStatus,
+    actorName: string,
+    note?: string,
+    rejectionReason?: string,
+    officialLetterNumber?: string,
+    officialLetterDate?: string,
+    issuedDocumentUrl?: string,
+    officialFileName?: string
+  ): SubmissionRequest | undefined {
+    const submissions = this.getSubmissions();
+    const idx = submissions.findIndex((s) => s.id === id);
+    if (idx === -1) return undefined;
+
+    const req = submissions[idx];
+    req.status = newStatus;
+    req.updatedAt = new Date().toISOString();
+    if (rejectionReason) req.rejectionReason = rejectionReason;
+    if (note) req.processingNote = note;
+    if (officialLetterNumber) req.officialLetterNumber = officialLetterNumber;
+    if (officialLetterDate) req.officialLetterDate = officialLetterDate;
+    if (issuedDocumentUrl !== undefined && issuedDocumentUrl !== '') {
+      req.issuedDocumentUrl = issuedDocumentUrl;
+    }
+    if (!req.formData) {
+      req.formData = {};
+    }
+    if (officialFileName) {
+      req.formData._officialFileName = officialFileName;
+    }
+    if (newStatus === 'Selesai') {
+      req.digitalSignatureApplied = true;
+    }
+
+    req.timeline.push({
+      status: newStatus,
+      timestamp: new Date().toISOString(),
+      actor: actorName,
+      note: note || (newStatus === 'Ditolak' ? rejectionReason : `Status diperbarui menjadi ${newStatus}`),
+    });
+
+    submissions[idx] = req;
+    setStored(KEYS.SUBMISSIONS, submissions);
+
+    this.addAuditLog(actorName, 'UPDATE_STATUS_SURAT', `Status permohonan ${req.requestNumber} diubah ke ${newStatus}`);
+
+    // Update status di Google Spreadsheet
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.updateStatusInAppsScript(req.requestNumber, newStatus, actorName, officialLetterNumber, req.issuedDocumentUrl).catch((err) => {
+        console.warn('Apps Script update status background:', err);
+      });
+    });
+
+    return req;
+  },
+
+  // Auto Letter Number Sequence Generator
+  generateNextOfficialLetterNumber(): string {
+    const settings = this.getSettings();
+    const currentYear = new Date().getFullYear();
+    const seq = settings.currentSeqNumber || 1;
+    const formattedSeq = String(seq).padStart(3, '0');
+
+    // Pattern: 420/{SEQ}/TU-SMK/{YEAR}
+    let number = settings.letterNumberPattern || '420/{SEQ}/TU-SMK/{YEAR}';
+    number = number.replace('{SEQ}', formattedSeq).replace('{YEAR}', String(currentYear));
+
+    // Update sequence
+    settings.currentSeqNumber = seq + 1;
+    this.saveSettings(settings);
+
+    return number;
+  },
+
+  // Audit Logs
+  getAuditLogs(): AuditLog[] {
+    return getStored<AuditLog[]>(KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+  },
+  addAuditLog(actor: string, action: string, details: string): void {
+    const logs = this.getAuditLogs();
+    const user = this.getCurrentUser();
+    const newLog: AuditLog = {
+      id: 'log-' + Date.now(),
+      timestamp: new Date().toISOString(),
+      username: user ? user.username : actor,
+      userRole: user ? user.role : 'System',
+      action,
+      details,
+    };
+    logs.unshift(newLog);
+    if (logs.length > 100) logs.length = 100;
+    setStored(KEYS.AUDIT_LOGS, logs);
+  },
+
+  // Complaints / Helpdesk Tickets API
+  getComplaints(): ComplaintTicket[] {
+    const rawList = getStored<ComplaintTicket[]>(KEYS.COMPLAINTS, INITIAL_COMPLAINTS);
+    const filtered = rawList.filter((c) => !isDummyComplaint(c));
+    
+    // Ensure unique IDs across all complaints
+    const seenIds = new Set<string>();
+    let hasDupes = filtered.length !== rawList.length;
+    const deduplicated = filtered.map((c, idx) => {
+      if (!c.id || seenIds.has(c.id)) {
+        hasDupes = true;
+        const uniqueId = `tkt-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+        seenIds.add(uniqueId);
+        return { ...c, id: uniqueId };
+      }
+      seenIds.add(c.id);
+      return c;
+    });
+
+    if (hasDupes) {
+      setTimeout(() => {
+        setStored(KEYS.COMPLAINTS, deduplicated, false);
+      }, 0);
+    }
+    return deduplicated;
+  },
+
+  saveComplaints(complaints: ComplaintTicket[]): void {
+    setStored(KEYS.COMPLAINTS, complaints);
+  },
+
+  getComplaintById(id: string): ComplaintTicket | undefined {
+    const list = this.getComplaints();
+    return list.find((c) => c.id === id);
+  },
+
+  getComplaintByTicketNumber(ticketNumber: string): ComplaintTicket | undefined {
+    const clean = ticketNumber.trim().toUpperCase();
+    const list = this.getComplaints();
+    return list.find((c) => c.ticketNumber.toUpperCase() === clean);
+  },
+
+  generateNextTicketNumber(): string {
+    const list = this.getComplaints();
+    const now = new Date();
+    const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prefix = `TKT-${yearMonth}-`;
+    const matching = list.filter((c) => c.ticketNumber && c.ticketNumber.startsWith(prefix));
+    const nextIndex = matching.length + 1;
+    return `${prefix}${String(nextIndex).padStart(4, '0')}`;
+  },
+
+  createComplaint(data: {
+    senderName: string;
+    senderContact: string;
+    message: string;
+    category?: string;
+  }): ComplaintTicket {
+    const list = this.getComplaints();
+    const ticketNumber = this.generateNextTicketNumber();
+    const now = new Date().toISOString();
+
+    const newTicket: ComplaintTicket = {
+      id: 'tkt-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      ticketNumber,
+      senderName: data.senderName.trim(),
+      senderContact: data.senderContact.trim(),
+      message: data.message.trim(),
+      category: data.category || 'Kendala / Pertanyaan Umum',
+      status: 'Baru',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const updated = [newTicket, ...list];
+    this.saveComplaints(updated);
+
+    // Sync to Google Apps Script
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.sendComplaintToAppsScript(newTicket).catch((err) => {
+        console.warn('Sync complaint to Apps Script error:', err);
+      });
+    });
+
+    this.addAuditLog('System', 'CREATE_COMPLAINT', `Pengaduan baru diterima: ${ticketNumber} dari ${newTicket.senderName}`);
+    return newTicket;
+  },
+
+  updateComplaintResponse(
+    ticketId: string,
+    adminResponse: string,
+    status: ComplaintStatus,
+    actorName: string = 'Staf TU Admin'
+  ): boolean {
+    const list = this.getComplaints();
+    const idx = list.findIndex((c) => c.id === ticketId);
+    if (idx === -1) return false;
+
+    const now = new Date().toISOString();
+    const updatedTicket: ComplaintTicket = {
+      ...list[idx],
+      adminResponse: adminResponse.trim(),
+      status,
+      respondedAt: now,
+      respondedBy: actorName,
+      updatedAt: now,
+    };
+
+    list[idx] = updatedTicket;
+    this.saveComplaints(list);
+
+    // Sync to Google Apps Script
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.sendComplaintToAppsScript(updatedTicket).catch((err) => {
+        console.warn('Sync complaint update to Apps Script error:', err);
+      });
+    });
+
+    this.addAuditLog(
+      actorName,
+      'RESPOND_COMPLAINT',
+      `Menanggapi pengaduan ${updatedTicket.ticketNumber} (Status: ${status})`
+    );
+    return true;
+  },
+
+  deleteComplaint(ticketId: string): boolean {
+    const list = this.getComplaints();
+    const target = list.find((c) => c.id === ticketId);
+    if (!target) return false;
+
+    const filtered = list.filter((c) => c.id !== ticketId);
+    this.saveComplaints(filtered);
+
+    // Sync delete to Google Apps Script
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.deleteComplaintInAppsScript(ticketId, target.ticketNumber).catch((err) => {
+        console.warn('Sync delete complaint error:', err);
+      });
+    });
+
+    this.addAuditLog(
+      'Staf TU Admin',
+      'DELETE_COMPLAINT',
+      `Menghapus data tiket pengaduan ${target.ticketNumber} (${target.senderName})`
+    );
+    return true;
+  },
+
+  clearAllComplaints(): void {
+    this.saveComplaints([]);
+    this.addAuditLog('super_admin', 'CLEAR_COMPLAINTS', 'Mengosongkan seluruh data pengaduan.');
+  },
+
+  // Export / Import / Reset Database
+  exportBackupJSON(): string {
+    const backup = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      settings: this.getSettings(),
+      users: this.getUsers(),
+      letterTypes: this.getLetterTypes(),
+      formFields: this.getFormFields(),
+      templates: this.getTemplates(),
+      submissions: this.getSubmissions(),
+      auditLogs: this.getAuditLogs(),
+    };
+    return JSON.stringify(backup, null, 2);
+  },
+
+  importBackupJSON(jsonStr: string): boolean {
+    try {
+      const data = JSON.parse(jsonStr);
+      if (data.settings) this.saveSettings(data.settings);
+      if (data.users) this.saveUsers(data.users);
+      if (data.letterTypes) this.saveLetterTypes(data.letterTypes);
+      if (data.formFields) this.saveFormFields(data.formFields);
+      if (data.templates) {
+        setStored(KEYS.TEMPLATES, data.templates);
+      }
+      if (data.submissions) this.saveSubmissions(data.submissions);
+      if (data.auditLogs) {
+        setStored(KEYS.AUDIT_LOGS, data.auditLogs);
+      }
+      this.addAuditLog('super_admin', 'RESTORE_DATABASE', 'Memulihkan database dari file cadangan JSON.');
+      return true;
+    } catch (e) {
+      console.error('Failed to import backup JSON:', e);
+      return false;
+    }
+  },
+
+  resetToFactory(): void {
+    localStorage.removeItem(KEYS.SETTINGS);
+    localStorage.removeItem(KEYS.USERS);
+    localStorage.removeItem(KEYS.LETTER_TYPES);
+    localStorage.removeItem(KEYS.FORM_FIELDS);
+    localStorage.removeItem(KEYS.TEMPLATES);
+    localStorage.removeItem(KEYS.SUBMISSIONS);
+    localStorage.removeItem(KEYS.AUDIT_LOGS);
+    localStorage.removeItem(KEYS.CURRENT_USER);
+  },
+
+  // Archive & Document Expiry Management
+  extractActivityDates(formData: Record<string, any> = {}): {
+    startDate?: string;
+    endDate?: string;
+    activityStartDate?: string;
+    activityEndDate?: string;
+  } {
+    let startDate: string | undefined;
+    let endDate: string | undefined;
+
+    for (const [key, val] of Object.entries(formData)) {
+      if (!val || typeof val !== 'string') continue;
+      const k = key.toLowerCase();
+      // Start date keywords:
+      if (
+        (k.includes('tgl_mulai') ||
+          k.includes('mulai_kegiatan') ||
+          k.includes('tanggal_mulai') ||
+          k.includes('tgl_pelaksanaan') ||
+          k.includes('tanggal_pelaksanaan') ||
+          k.includes('waktu_pelaksanaan') ||
+          k.includes('dari_tanggal') ||
+          k.includes('tgl_awal') ||
+          k.includes('tanggal_awal') ||
+          k.includes('start_date') ||
+          k.includes('activity_start')) &&
+        !startDate
+      ) {
+        startDate = val;
+      }
+      // End date keywords:
+      if (
+        (k.includes('tgl_selesai') ||
+          k.includes('selesai_kegiatan') ||
+          k.includes('tanggal_selesai') ||
+          k.includes('sampai_tanggal') ||
+          k.includes('tgl_akhir') ||
+          k.includes('tanggal_akhir') ||
+          k.includes('batas_waktu') ||
+          k.includes('sd_tanggal') ||
+          k.includes('s_d_tanggal') ||
+          k.includes('sampai_dengan') ||
+          k.includes('end_date') ||
+          k.includes('activity_end')) &&
+        !endDate
+      ) {
+        endDate = val;
+      }
+      // Single activity date if neither is set yet:
+      if (
+        (k.includes('tanggal_kegiatan') ||
+          k.includes('tgl_kegiatan') ||
+          k.includes('tanggal_acara') ||
+          k.includes('tgl_acara')) &&
+        !startDate &&
+        !endDate
+      ) {
+        startDate = val;
+        endDate = val;
+      }
+    }
+
+    // If only start date is provided for a 1-day event, use start date as end date
+    if (startDate && !endDate) {
+      endDate = startDate;
+    }
+
+    return {
+      startDate,
+      endDate,
+      activityStartDate: startDate,
+      activityEndDate: endDate,
+    };
+  },
+
+  calculateArchiveStatus(
+    arg1?: string,
+    arg2?: Record<string, any> | boolean,
+    arg3?: string,
+    arg4?: boolean
+  ): {
+    status: ArchiveStatus;
+    isExpired: boolean;
+    startDate?: string;
+    endDate?: string;
+  } {
+    let letterTypeName = '';
+    let formData: Record<string, any> = {};
+    let directEndDate: string | undefined;
+    let isTemporalOverride: boolean | undefined;
+
+    if (typeof arg2 === 'boolean') {
+      // Called as calculateArchiveStatus(endDate, isTemporal)
+      directEndDate = arg1;
+      isTemporalOverride = arg2;
+    } else {
+      // Called as calculateArchiveStatus(letterTypeName, formData, directEndDate, isTemporal)
+      letterTypeName = arg1 || '';
+      formData = (arg2 as Record<string, any>) || {};
+      directEndDate = arg3;
+      isTemporalOverride = arg4;
+    }
+
+    const { startDate, endDate: extractedEndDate } = this.extractActivityDates(formData);
+    const effectiveEndDate = directEndDate || extractedEndDate;
+
+    const lowerTypeName = letterTypeName.toLowerCase();
+    const isTemporalLetter =
+      isTemporalOverride !== undefined
+        ? isTemporalOverride
+        : lowerTypeName.includes('dispensasi') ||
+          lowerTypeName.includes('rekomendasi') ||
+          lowerTypeName.includes('izin') ||
+          lowerTypeName.includes('lomba') ||
+          lowerTypeName.includes('tugas') ||
+          lowerTypeName.includes('magang') ||
+          lowerTypeName.includes('pkl') ||
+          lowerTypeName.includes('prakerin') ||
+          !!effectiveEndDate;
+
+    // Dokumen permanen jika bukan surat temporal atau tidak memiliki batas tanggal kegiatan
+    if (!isTemporalLetter || !effectiveEndDate) {
+      return {
+        status: 'Permanen',
+        isExpired: false,
+        startDate,
+        endDate: effectiveEndDate,
+      };
+    }
+
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const endD = new Date(effectiveEndDate);
+      endD.setHours(23, 59, 59, 999);
+
+      if (today.getTime() > endD.getTime()) {
+        return {
+          status: 'Inaktif / Selesai Kegiatan',
+          isExpired: true,
+          startDate,
+          endDate: effectiveEndDate,
+        };
+      }
+      return {
+        status: 'Aktif',
+        isExpired: false,
+        startDate,
+        endDate: effectiveEndDate,
+      };
+    } catch {
+      return {
+        status: 'Aktif',
+        isExpired: false,
+        startDate,
+        endDate: effectiveEndDate,
+      };
+    }
+  },
+
+  getArchivedDocuments(): ArchiveDocument[] {
+    const submissions = this.getSubmissions();
+    const completedList = submissions.filter((s) => s.status === 'Selesai');
+
+    return completedList.map((req) => {
+      const { status, startDate, endDate } = this.calculateArchiveStatus(req.letterTypeName, req.formData || {});
+      const issueDate = req.officialLetterDate
+        ? req.officialLetterDate
+        : new Date(req.createdAt).toISOString().split('T')[0];
+
+      return {
+        id: req.id,
+        officialLetterNumber: req.officialLetterNumber || req.requestNumber,
+        requestNumber: req.requestNumber,
+        applicantName: req.applicantName,
+        letterTypeName: req.letterTypeName,
+        issueDate,
+        activityStartDate: startDate || '',
+        activityEndDate: endDate || '',
+        archiveStatus: status,
+        fileUrl: req.issuedDocumentUrl || req.formData?._officialFileUrl || req.formData?.fileUrl || '',
+        notes: req.processingNote || '',
+      };
+    });
+  },
+};

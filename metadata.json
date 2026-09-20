@@ -1,0 +1,6 @@
+{
+  "name": "e-suratbtm",
+  "description": "Sistem Pelayanan Tata Usaha Surat Siswa & Alumni SMK/SMA modern dengan Dynamic Form Builder, Tracking QR Code, Verification, Template Engine, & Admin Portal Management.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

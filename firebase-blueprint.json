@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "settings": {
+      "attributes": {
+        "schoolName": { "type": "string" },
+        "npsn": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "website": { "type": "string" },
+        "headmasterName": { "type": "string" },
+        "headmasterNip": { "type": "string" },
+        "letterNumberPattern": { "type": "string" },
+        "currentSeqNumber": { "type": "number" },
+        "spreadsheetId": { "type": "string" },
+        "appsScriptUrl": { "type": "string" },
+        "classes": { "type": "array" },
+        "majors": { "type": "array" },
+        "operatingHours": { "type": "map" }
+      }
+    },
+    "users": {
+      "attributes": {
+        "username": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "password": { "type": "string" },
+        "nip": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "submissions": {
+      "attributes": {
+        "requestNumber": { "type": "string" },
+        "letterTypeId": { "type": "string" },
+        "letterTypeName": { "type": "string" },
+        "applicantName": { "type": "string" },
+        "applicantEmail": { "type": "string" },
+        "applicantPhone": { "type": "string" },
+        "applicantRole": { "type": "string" },
+        "formData": { "type": "map" },
+        "uploadedFiles": { "type": "map" },
+        "status": { "type": "string" },
+        "qrVerificationCode": { "type": "string" },
+        "timeline": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "officialLetterNumber": { "type": "string" },
+        "officialLetterDate": { "type": "string" },
+        "issuedDocumentUrl": { "type": "string" },
+        "processingNote": { "type": "string" },
+        "rejectionReason": { "type": "string" },
+        "digitalSignatureApplied": { "type": "boolean" }
+      }
+    },
+    "letterTypes": {
+      "attributes": {
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "requiresAttachment": { "type": "boolean" },
+        "attachmentLabel": { "type": "string" }
+      }
+    },
+    "formFields": {
+      "attributes": {
+        "letterTypeId": { "type": "string" },
+        "label": { "type": "string" },
+        "type": { "type": "string" },
+        "placeholder": { "type": "string" },
+        "required": { "type": "boolean" },
+        "options": { "type": "array" },
+        "order": { "type": "number" }
+      }
+    },
+    "templates": {
+      "attributes": {
+        "letterTypeId": { "type": "string" },
+        "templateName": { "type": "string" },
+        "content": { "type": "string" },
+        "variables": { "type": "array" }
+      }
+    },
+    "auditLogs": {
+      "attributes": {
+        "timestamp": { "type": "string" },
+        "username": { "type": "string" },
+        "userRole": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" }
+      }
+    }
+  }
+}
