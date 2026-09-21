@@ -449,7 +449,7 @@ export const PdfQrStamperModal: React.FC<PdfQrStamperModalProps> = ({
                 ) : (
                   <>
                     <CheckCircle2 className="w-5 h-5" />
-                    <span>Tempelkan QR & Terbitkan Dokumen</span>
+                    <span>Tempelkan QR ke Dokumen</span>
                   </>
                 )}
               </button>

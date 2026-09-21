@@ -677,6 +677,14 @@ function handleRoute(action, params) {
           var lYearFolder = getOrCreateSubFolder(folder, lYm.year);
           var lMonthFolder = getOrCreateSubFolder(lYearFolder, lYm.month);
 
+          // Anti-Duplikat: Bersihkan lampiran lama bernama sama di folder
+          var lExisting = lMonthFolder.getFilesByName(params.fileName);
+          while (lExisting.hasNext()) {
+            try {
+              lExisting.next().setTrashed(true);
+            } catch (eTrash) {}
+          }
+
           var base64Str = params.fileData.indexOf(',') > -1 ? params.fileData.split(',')[1] : params.fileData;
           var bytes = Utilities.base64Decode(base64Str);
           var blob = Utilities.newBlob(bytes, params.fileType || 'application/octet-stream', params.fileName);
@@ -846,6 +854,21 @@ function handleRoute(action, params) {
         var ym = getYearAndMonthFolderNames(params.officialLetterDate);
         var yearFolder = getOrCreateSubFolder(rootFolder, ym.year);
         var targetMonthFolder = getOrCreateSubFolder(yearFolder, ym.month);
+
+        // Anti-Duplikat: Bersihkan file lama dengan nama yang sama di folder agar tidak terjadi file ganda
+        var existingFiles = targetMonthFolder.getFilesByName(rawDocName);
+        while (existingFiles.hasNext()) {
+          var oldFile = existingFiles.next();
+          try {
+            oldFile.setTrashed(true);
+          } catch (eTrash) {}
+        }
+        var rootExisting = rootFolder.getFilesByName(rawDocName);
+        while (rootExisting.hasNext()) {
+          try {
+            rootExisting.next().setTrashed(true);
+          } catch (eTrash) {}
+        }
 
         var base64Str = rawDoc.indexOf(',') > -1 ? rawDoc.split(',')[1] : rawDoc;
         var bytes = Utilities.base64Decode(base64Str);

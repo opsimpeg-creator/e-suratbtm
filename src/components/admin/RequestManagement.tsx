@@ -1335,51 +1335,18 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
             setUploadedOfficialFileUrl(stampedUri);
             setUploadedOfficialFileName(stampedName);
 
-            // Auto-persist directly to StorageService so it is instantly saved and available for download
-            const currentUser = StorageService.getCurrentUser();
-            const actorName = currentUser ? `${currentUser.name} (${currentUser.role})` : 'Staf TU Admin';
             const targetStatus = modalStatus === 'Menunggu' || modalStatus === 'Diproses' ? 'Selesai' : modalStatus;
             setModalStatus(targetStatus);
 
-            StorageService.updateRequestStatus(
-              selectedRequest.id,
-              targetStatus,
-              actorName,
-              modalNote || 'QR Code verifikasi resmi telah berhasil disematkan pada dokumen surat.',
-              undefined,
-              officialNumberInput || selectedRequest.officialLetterNumber,
-              officialDateInput || selectedRequest.officialLetterDate || new Date().toISOString().split('T')[0],
-              stampedUri,
-              stampedName
-            );
-
-            // Update local selected request state
+            // Update local selected request state agar pratinjau dan form langsung sinkron
             selectedRequest.issuedDocumentUrl = stampedUri;
             selectedRequest.status = targetStatus;
             if (!selectedRequest.formData) selectedRequest.formData = {};
             selectedRequest.formData._officialFileName = stampedName;
             if (officialNumberInput) selectedRequest.officialLetterNumber = officialNumberInput;
 
-            // Also synchronize stamped document to collective siblings if selected
-            if (syncToCollectiveSiblings && collectiveSelectedIds.length > 1) {
-              collectiveSelectedIds.forEach((targetId) => {
-                if (targetId !== selectedRequest.id) {
-                  StorageService.updateRequestStatus(
-                    targetId,
-                    targetStatus,
-                    actorName,
-                    modalNote || `Surat resmi distempel & diterbitkan kolektif (bersama ${selectedRequest.applicantName}).`,
-                    undefined,
-                    officialNumberInput || selectedRequest.officialLetterNumber,
-                    officialDateInput || selectedRequest.officialLetterDate || new Date().toISOString().split('T')[0],
-                    stampedUri,
-                    stampedName
-                  );
-                }
-              });
-            }
-
-            onRefresh();
+            // Tutup modal QR stamper; pengguna akan menekan 'Simpan Perubahan Status' untuk melakukan 1 kali simpan & upload ke Google Drive
+            setIsQrStamperOpen(false);
           }}
         />
       )}
