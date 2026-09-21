@@ -7,6 +7,7 @@ import { PdfGenerator } from '../../services/pdfGenerator';
 import { ConfirmModal } from '../common/ConfirmModal';
 import { PdfQrStamperModal } from './PdfQrStamperModal';
 import { ArchiveStatusBadge } from './ArchiveStatusBadge';
+import { getEmbeddableDocumentUrl, triggerDocumentDownload } from '../../utils/documentViewer';
 import {
   Search,
   Filter,
@@ -102,7 +103,7 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
   const [isQrStamperOpen, setIsQrStamperOpen] = useState(false);
 
   // Preview File Modal State
-  const [previewModalFile, setPreviewModalFile] = useState<{ fileName: string; fileUrl: string; fileSize?: string } | null>(null);
+  const [previewModalFile, setPreviewModalFile] = useState<{ fileName: string; fileUrl: string; rawUrl?: string; fileSize?: string } | null>(null);
   const [isPulling, setIsPulling] = useState(false);
 
   // Delete Confirmation Modal State
@@ -214,31 +215,36 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
 
   const handleOpenPreview = (rawUrl: string, fileName: string, fileSize?: string) => {
     if (!rawUrl) return;
+    const { embedUrl, directUrl, isDrive } = getEmbeddableDocumentUrl(rawUrl);
+    if (isDrive) {
+      setPreviewModalFile({
+        fileName,
+        fileUrl: embedUrl,
+        rawUrl: directUrl,
+        fileSize,
+      });
+      return;
+    }
     if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
-      window.open(rawUrl, '_blank', 'noopener,noreferrer');
+      setPreviewModalFile({
+        fileName,
+        fileUrl: rawUrl,
+        rawUrl,
+        fileSize,
+      });
       return;
     }
     const safeUrl = base64ToBlobUrl(rawUrl);
     setPreviewModalFile({
       fileName,
       fileUrl: safeUrl,
+      rawUrl: safeUrl,
       fileSize,
     });
   };
 
   const handleDownloadFile = (rawUrl: string, fileName: string) => {
-    if (!rawUrl) return;
-    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
-      window.open(rawUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    const safeUrl = base64ToBlobUrl(rawUrl);
-    const a = document.createElement('a');
-    a.href = safeUrl;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    triggerDocumentDownload(rawUrl, fileName);
   };
 
   const filteredSubmissions = submissions.filter((req) => {
@@ -1256,15 +1262,15 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => handleDownloadFile(previewModalFile.fileUrl, previewModalFile.fileName)}
-                  className="p-2 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold px-3 bg-slate-800/60"
+                  onClick={() => handleDownloadFile(previewModalFile.rawUrl || previewModalFile.fileUrl, previewModalFile.fileName)}
+                  className="p-2 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold px-3 bg-slate-800/60 cursor-pointer"
                   title="Unduh File"
                 >
                   <FileDown className="w-4 h-4" />
                   <span className="hidden sm:inline">Unduh</span>
                 </button>
                 <a
-                  href={previewModalFile.fileUrl}
+                  href={previewModalFile.rawUrl || previewModalFile.fileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-2 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold px-3 bg-slate-800/60"
@@ -1276,7 +1282,7 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
                 <button
                   type="button"
                   onClick={() => setPreviewModalFile(null)}
-                  className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-all"
+                  className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-all cursor-pointer"
                   title="Tutup Pratinjau"
                 >
                   <X className="w-5 h-5" />
@@ -1285,18 +1291,19 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
             </div>
 
             {/* Viewer Content */}
-            <div className="p-4 bg-slate-100 flex-1 overflow-auto flex items-center justify-center min-h-[400px]">
+            <div className="p-4 bg-slate-100 flex-1 overflow-auto flex items-center justify-center min-h-[450px]">
               {previewModalFile.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) || previewModalFile.fileUrl.startsWith('data:image/') ? (
                 <img
                   src={previewModalFile.fileUrl}
                   alt={previewModalFile.fileName}
-                  className="max-h-[70vh] max-w-full object-contain rounded-xl shadow-lg border border-slate-200"
+                  className="max-h-[75vh] max-w-full object-contain rounded-xl shadow-lg border border-slate-200"
                 />
-              ) : previewModalFile.fileName.match(/\.pdf$/i) || previewModalFile.fileUrl.includes('pdf') || previewModalFile.fileUrl.startsWith('data:application/pdf') || previewModalFile.fileUrl.startsWith('blob:') ? (
+              ) : previewModalFile.fileUrl.includes('drive.google.com') || previewModalFile.fileName.match(/\.pdf$/i) || previewModalFile.fileUrl.includes('pdf') || previewModalFile.fileUrl.startsWith('data:application/pdf') || previewModalFile.fileUrl.startsWith('blob:') || previewModalFile.fileUrl.startsWith('http') ? (
                 <iframe
                   src={previewModalFile.fileUrl}
                   title={previewModalFile.fileName}
-                  className="w-full h-[70vh] rounded-xl border border-slate-300 shadow-inner bg-white"
+                  className="w-full h-[75vh] rounded-xl border border-slate-300 shadow-inner bg-white"
+                  allow="autoplay"
                 />
               ) : (
                 <div className="text-center p-8 bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md">
@@ -1305,8 +1312,8 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
                   <p className="text-xs text-slate-500 mb-4">Pratinjau langsung tidak tersedia untuk format file ini. Silakan unduh atau buka file.</p>
                   <button
                     type="button"
-                    onClick={() => handleDownloadFile(previewModalFile.fileUrl, previewModalFile.fileName)}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs inline-flex items-center gap-2 shadow-sm"
+                    onClick={() => handleDownloadFile(previewModalFile.rawUrl || previewModalFile.fileUrl, previewModalFile.fileName)}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs inline-flex items-center gap-2 shadow-sm cursor-pointer"
                   >
                     <FileDown className="w-4 h-4" />
                     <span>Unduh File Sekarang</span>
