@@ -666,17 +666,21 @@ function handleRoute(action, params) {
       if (!sheet) return { success: false, message: "Sheet Permohonan tidak ditemukan" };
       var formData = params.formData || {};
 
-      // Auto Upload File Lampiran ke Google Drive
+      // Auto Upload File Lampiran ke Google Drive dengan struktur berjenjang (Tahun > Bulan)
       if (params.fileData && params.fileName) {
         try {
           var folderName = 'Lampiran E-Surat TU';
           var folders = DriveApp.getFoldersByName(folderName);
           var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
 
+          var lYm = getYearAndMonthFolderNames(new Date());
+          var lYearFolder = getOrCreateSubFolder(folder, lYm.year);
+          var lMonthFolder = getOrCreateSubFolder(lYearFolder, lYm.month);
+
           var base64Str = params.fileData.indexOf(',') > -1 ? params.fileData.split(',')[1] : params.fileData;
           var bytes = Utilities.base64Decode(base64Str);
           var blob = Utilities.newBlob(bytes, params.fileType || 'application/octet-stream', params.fileName);
-          var file = folder.createFile(blob);
+          var file = lMonthFolder.createFile(blob);
           file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
           formData['DriveLink_Lampiran'] = file.getUrl();
@@ -827,21 +831,26 @@ function handleRoute(action, params) {
       sheet.getRange(1, colTglTerbit).setValue('TanggalTerbitResmi').setFontWeight('bold').setBackground('#1e40af').setFontColor('#ffffff');
     }
 
-    // Auto Upload Surat Resmi ke Google Drive jika ada file data base64
+    // Auto Upload Surat Resmi ke Google Drive jika ada file data base64 dengan struktur berjenjang (Tahun > Bulan)
     var finalFileUrl = params.issuedDocumentUrl || '';
     var rawDoc = params.fileData || params.issuedDocumentData || params.issuedDocumentUrl || '';
     var rawDocName = params.fileName || params.officialFileName || ('Surat_Resmi_' + String(params.officialLetterNumber || params.requestNumber).replace(/[/\\?%*:|"<>]/g, '_') + '.pdf');
 
     if (rawDoc && (rawDoc.indexOf('data:') === 0 || rawDoc.indexOf('JVBER') === 0 || (rawDoc.length > 500 && rawDoc.indexOf('http') !== 0))) {
       try {
-        var folderName = 'Surat Resmi E-Surat TU';
-        var folders = DriveApp.getFoldersByName(folderName);
-        var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+        var rootFolderName = 'Surat Resmi E-Surat TU';
+        var rootFolders = DriveApp.getFoldersByName(rootFolderName);
+        var rootFolder = rootFolders.hasNext() ? rootFolders.next() : DriveApp.createFolder(rootFolderName);
+
+        // Subfolder berjenjang: Surat Resmi E-Surat TU / [Tahun] / [Bulan]
+        var ym = getYearAndMonthFolderNames(params.officialLetterDate);
+        var yearFolder = getOrCreateSubFolder(rootFolder, ym.year);
+        var targetMonthFolder = getOrCreateSubFolder(yearFolder, ym.month);
 
         var base64Str = rawDoc.indexOf(',') > -1 ? rawDoc.split(',')[1] : rawDoc;
         var bytes = Utilities.base64Decode(base64Str);
         var blob = Utilities.newBlob(bytes, 'application/pdf', rawDocName);
-        var file = folder.createFile(blob);
+        var file = targetMonthFolder.createFile(blob);
         file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
         finalFileUrl = file.getUrl();
@@ -1337,6 +1346,60 @@ function logActivity(ss, user, action, details) {
   if (sheet) {
     sheet.appendRow(['log-' + Date.now(), new Date().toISOString(), user, 'Admin', action, details]);
   }
+}
+
+function getOrCreateSubFolder(parentFolder, name) {
+  var iter = parentFolder.getFoldersByName(name);
+  return iter.hasNext() ? iter.next() : parentFolder.createFolder(name);
+}
+
+function getYearAndMonthFolderNames(dateStr) {
+  var d = new Date();
+  if (dateStr) {
+    try {
+      var s = String(dateStr).trim();
+      var parts = s.split(/[/.-]/);
+      if (parts.length === 3 && parts[2].length === 4) {
+        var pDay = parseInt(parts[0], 10);
+        var pMonth = parseInt(parts[1], 10) - 1;
+        var pYear = parseInt(parts[2], 10);
+        if (!isNaN(pDay) && !isNaN(pMonth) && !isNaN(pYear)) {
+          var cand = new Date(pYear, pMonth, pDay);
+          if (!isNaN(cand.getTime())) d = cand;
+        }
+      } else {
+        var indoMap = {
+          'januari': 0, 'februari': 1, 'maret': 2, 'april': 3, 'mei': 4, 'juni': 5,
+          'juli': 6, 'agustus': 7, 'september': 8, 'oktober': 9, 'november': 10, 'desember': 11
+        };
+        var lowerS = s.toLowerCase();
+        var foundMonth = -1;
+        for (var mKey in indoMap) {
+          if (lowerS.indexOf(mKey) !== -1) {
+            foundMonth = indoMap[mKey];
+            break;
+          }
+        }
+        var yearMatch = s.match(/(20\\d{2})/);
+        if (foundMonth !== -1 && yearMatch) {
+          d = new Date(parseInt(yearMatch[1], 10), foundMonth, 1);
+        } else {
+          var candIso = new Date(s);
+          if (!isNaN(candIso.getTime())) d = candIso;
+        }
+      }
+    } catch (eParse) {}
+  }
+
+  var monthNames = [
+    '01 - Januari', '02 - Februari', '03 - Maret', '04 - April',
+    '05 - Mei', '06 - Juni', '07 - Juli', '08 - Agustus',
+    '09 - September', '10 - Oktober', '11 - November', '12 - Desember'
+  ];
+
+  var yr = String(d.getFullYear());
+  var mo = monthNames[d.getMonth()] || ('0' + (d.getMonth() + 1)).slice(-2);
+  return { year: yr, month: mo };
 }
 `;
   },
