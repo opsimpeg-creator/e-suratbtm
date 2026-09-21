@@ -610,7 +610,29 @@ export const StorageService = {
         setStored(KEYS.SUBMISSIONS, deduplicatedList, false);
       }, 0);
     }
-    return deduplicatedList;
+
+    // Pastikan permohonan berstatus 'Ditolak' tidak menyimpan nomor surat resmi agar tidak menggantung sebagai kelompok kolektif
+    let hasCleanedDitolak = false;
+    const sanitizedList = deduplicatedList.map((item) => {
+      if (item.status === 'Ditolak' && item.officialLetterNumber) {
+        hasCleanedDitolak = true;
+        return {
+          ...item,
+          officialLetterNumber: undefined,
+          issuedDocumentUrl: undefined,
+          digitalSignatureApplied: false,
+        };
+      }
+      return item;
+    });
+
+    if (hasCleanedDitolak) {
+      setTimeout(() => {
+        setStored(KEYS.SUBMISSIONS, sanitizedList, false);
+      }, 0);
+    }
+
+    return sanitizedList;
   },
   getSampleSubmissions(): SubmissionRequest[] {
     return DEMO_SAMPLE_SUBMISSIONS;
@@ -672,14 +694,14 @@ export const StorageService = {
    * If an officialLetterNumber exists, it finds all submissions sharing that official letter number.
    */
   getCollectiveSubmissions(primaryReq: SubmissionRequest): SubmissionRequest[] {
-    if (!primaryReq) return [];
+    if (!primaryReq || primaryReq.status === 'Ditolak') return primaryReq ? [primaryReq] : [];
     const allList = [...this.getSubmissions(), ...DEMO_SAMPLE_SUBMISSIONS];
 
-    // Case 1: If official letter number is set, group by official letter number
+    // Case 1: If official letter number is set, group by official letter number (hanya yang statusnya bukan Ditolak)
     const offNum = (primaryReq.officialLetterNumber || '').trim().toLowerCase();
     if (offNum) {
       const matched = allList.filter(
-        (s) => (s.officialLetterNumber || '').trim().toLowerCase() === offNum
+        (s) => s.status !== 'Ditolak' && (s.officialLetterNumber || '').trim().toLowerCase() === offNum
       );
       if (matched.length > 0) {
         // Ensure unique by applicantName or id
@@ -698,7 +720,7 @@ export const StorageService = {
     const qrCode = (primaryReq.qrVerificationCode || '').trim().toLowerCase();
     if (qrCode) {
       const matched = allList.filter(
-        (s) => (s.qrVerificationCode || '').trim().toLowerCase() === qrCode
+        (s) => s.status !== 'Ditolak' && (s.qrVerificationCode || '').trim().toLowerCase() === qrCode
       );
       if (matched.length > 1) {
         const uniqueMap = new Map<string, SubmissionRequest>();
@@ -714,6 +736,57 @@ export const StorageService = {
 
     // Default: Return single primary request
     return [primaryReq];
+  },
+  detachFromCollective(
+    id: string,
+    actorName: string,
+    reason?: string
+  ): SubmissionRequest | undefined {
+    const submissions = this.getSubmissions();
+    const idx = submissions.findIndex((s) => s.id === id);
+    if (idx === -1) return undefined;
+
+    const req = submissions[idx];
+    const oldNum = req.officialLetterNumber;
+    req.officialLetterNumber = undefined;
+    req.issuedDocumentUrl = undefined;
+    req.digitalSignatureApplied = false;
+    if (req.formData) {
+      req.formData._officialFileName = undefined;
+      req.formData._officialFileUrl = undefined;
+    }
+    // Jika tadinya berstatus 'Selesai' karena ikut nomor bersama, kembalikan ke 'Diproses' agar tidak rancu
+    if (req.status === 'Selesai') {
+      req.status = 'Diproses';
+    }
+    req.updatedAt = new Date().toISOString();
+    req.timeline.push({
+      status: req.status,
+      timestamp: new Date().toISOString(),
+      actor: actorName,
+      note: reason || `Dilepaskan dari nomor surat kolektif ${oldNum || ''}`,
+    });
+
+    submissions[idx] = req;
+    setStored(KEYS.SUBMISSIONS, submissions);
+
+    // Sinkronisasi pelepasan nomor surat ke Google Spreadsheet
+    import('./appsScript').then(({ AppsScriptService }) => {
+      AppsScriptService.updateStatusInAppsScript(
+        req.requestNumber,
+        req.status,
+        actorName,
+        '',
+        '',
+        '',
+        '',
+        req.id
+      );
+    }).catch((err) => {
+      console.warn('Apps Script detach sync:', err);
+    });
+
+    return req;
   },
   saveSubmissions(submissions: SubmissionRequest[]): void {
     setStored(KEYS.SUBMISSIONS, submissions);
@@ -885,19 +958,34 @@ export const StorageService = {
     req.updatedAt = new Date().toISOString();
     if (rejectionReason) req.rejectionReason = rejectionReason;
     if (note) req.processingNote = note;
-    if (officialLetterNumber) req.officialLetterNumber = officialLetterNumber;
-    if (officialLetterDate) req.officialLetterDate = officialLetterDate;
-    if (issuedDocumentUrl !== undefined && issuedDocumentUrl !== '') {
-      req.issuedDocumentUrl = issuedDocumentUrl;
-    }
-    if (!req.formData) {
-      req.formData = {};
-    }
-    if (officialFileName) {
-      req.formData._officialFileName = officialFileName;
-    }
-    if (newStatus === 'Selesai') {
-      req.digitalSignatureApplied = true;
+
+    if (newStatus === 'Ditolak') {
+      req.officialLetterNumber = undefined;
+      req.issuedDocumentUrl = undefined;
+      req.digitalSignatureApplied = false;
+      if (req.formData) {
+        req.formData._officialFileName = undefined;
+        req.formData._officialFileUrl = undefined;
+      }
+    } else {
+      if (officialLetterNumber !== undefined) {
+        req.officialLetterNumber = officialLetterNumber || undefined;
+      }
+      if (officialLetterDate !== undefined) {
+        req.officialLetterDate = officialLetterDate || undefined;
+      }
+      if (issuedDocumentUrl !== undefined) {
+        req.issuedDocumentUrl = issuedDocumentUrl || undefined;
+      }
+      if (!req.formData) {
+        req.formData = {};
+      }
+      if (officialFileName !== undefined) {
+        req.formData._officialFileName = officialFileName || undefined;
+      }
+      if (newStatus === 'Selesai') {
+        req.digitalSignatureApplied = true;
+      }
     }
 
     req.timeline.push({

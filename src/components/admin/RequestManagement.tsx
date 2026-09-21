@@ -93,6 +93,7 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
   const [officialDateInput, setOfficialDateInput] = useState('');
   const [syncToCollectiveSiblings, setSyncToCollectiveSiblings] = useState(true);
   const [collectiveSelectedIds, setCollectiveSelectedIds] = useState<string[]>([]);
+  const [originalCollectiveSiblingIds, setOriginalCollectiveSiblingIds] = useState<string[]>([]);
 
   // Official Letter Manual Upload State
   const [uploadedOfficialFileUrl, setUploadedOfficialFileUrl] = useState<string>('');
@@ -295,8 +296,11 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
 
     // Find other submissions with same letter type that might be grouped or already share this letter number
     const siblings = StorageService.getCollectiveSubmissions(req);
+    const sibIds = siblings.map((s) => s.id);
+    setOriginalCollectiveSiblingIds(sibIds);
+
     if (siblings.length > 1) {
-      setCollectiveSelectedIds(siblings.map((s) => s.id));
+      setCollectiveSelectedIds(sibIds);
       setSyncToCollectiveSiblings(true);
     } else {
       setCollectiveSelectedIds([req.id]);
@@ -356,7 +360,26 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
       uploadedOfficialFileName
     );
 
-    // 2. If collective sync is selected, also apply the same status, official letter number, date, and document to the selected sibling submissions!
+    // Tentukan ID mana saja yang tetap tergabung dalam penerbitan kolektif ini
+    const activeTargetIds = syncToCollectiveSiblings && collectiveSelectedIds.length > 1
+      ? collectiveSelectedIds
+      : [selectedRequest.id];
+
+    // 2. Deteksi siswa yang sebelumnya ikut dalam surat ini, namun sekarang dikeluarkan/di-uncheck dari kolektif
+    const removedFromCollectiveIds = originalCollectiveSiblingIds.filter(
+      (oldId) => !activeTargetIds.includes(oldId)
+    );
+
+    // Lepaskan siswa yang dikeluarkan agar nomor surat resminya dicabut dan tidak lagi menyandang badge kolektif
+    removedFromCollectiveIds.forEach((detachedId) => {
+      StorageService.detachFromCollective(
+        detachedId,
+        actorName,
+        `Dilepaskan dari nomor surat kolektif ${officialNumberInput || selectedRequest.officialLetterNumber || ''}`
+      );
+    });
+
+    // 3. Jika penerbitan kolektif diaktifkan, terapkan status, nomor surat, dan dokumen ke siswa lain yang tetap terpilih
     if (syncToCollectiveSiblings && collectiveSelectedIds.length > 1) {
       collectiveSelectedIds.forEach((targetId) => {
         if (targetId !== selectedRequest.id) {
@@ -925,12 +948,14 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
 
                   {/* Collective Linking Option for 'Selesai' status */}
                   {modalStatus === 'Selesai' && (() => {
-                    // Find other submissions that share the same letter type and are in active processing
+                    // Find other submissions that share the same letter type and are not rejected
                     const potentialSiblings = submissions.filter(
                       (s) =>
-                        s.letterTypeId === selectedRequest.letterTypeId ||
-                        (officialNumberInput && s.officialLetterNumber === officialNumberInput) ||
-                        (selectedRequest.officialLetterNumber && s.officialLetterNumber === selectedRequest.officialLetterNumber)
+                        s.status !== 'Ditolak' && (
+                          s.letterTypeId === selectedRequest.letterTypeId ||
+                          (officialNumberInput && s.officialLetterNumber === officialNumberInput) ||
+                          (selectedRequest.officialLetterNumber && s.officialLetterNumber === selectedRequest.officialLetterNumber)
+                        )
                     );
 
                     if (potentialSiblings.length <= 1) return null;
@@ -942,7 +967,19 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
                             <input
                               type="checkbox"
                               checked={syncToCollectiveSiblings}
-                              onChange={(e) => setSyncToCollectiveSiblings(e.target.checked)}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setSyncToCollectiveSiblings(checked);
+                                if (!checked) {
+                                  setCollectiveSelectedIds([selectedRequest.id]);
+                                } else {
+                                  setCollectiveSelectedIds(
+                                    originalCollectiveSiblingIds.length > 1
+                                      ? originalCollectiveSiblingIds
+                                      : [selectedRequest.id]
+                                  );
+                                }
+                              }}
                               className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
                             />
                             <span className="flex items-center gap-1.5">
@@ -950,8 +987,14 @@ export const RequestManagement: React.FC<RequestManagementProps> = ({
                               <span>Penerbitan Surat Kolektif (Terapkan No. Surat & Dokumen ke Siswa Lain Sekaligus)</span>
                             </span>
                           </label>
-                          <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">
-                            {collectiveSelectedIds.length} Siswa Terpilih
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            syncToCollectiveSiblings && collectiveSelectedIds.length > 1
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {syncToCollectiveSiblings && collectiveSelectedIds.length > 1
+                              ? `${collectiveSelectedIds.length} Siswa Terpilih`
+                              : '1 Siswa (Mandiri / Tidak Kolektif)'}
                           </span>
                         </div>
 
